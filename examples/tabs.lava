@@ -1,4 +1,4 @@
-# Tab-indented Magma example (\t indentation)
+# Tab-indented Lava example (\t indentation)
 
 public class Tabs:
 	enum Mode:

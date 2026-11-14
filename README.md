@@ -1,9 +1,9 @@
-# Magma Language Specification
+# Lava Language Specification
 
-**Magma** (`.magma`) is a **1-to-1 Pythonic syntax skin for Java**.
+**Lava** (`.lava`) is a **1-to-1 Pythonic syntax skin for Java**.
 
-Unlike Kotlin, Groovy, or Scala—which introduce their own compilers, standard libraries, runtime dependencies, or complex type systems—Magma has **zero runtime overhead and zero external dependencies**:
-- Every line of Magma maps deterministically **1-to-1** to standard Java (and back).
+Unlike Kotlin, Groovy, or Scala—which introduce their own compilers, standard libraries, runtime dependencies, or complex type systems—Lava has **zero runtime overhead and zero external dependencies**:
+- Every line of Lava maps deterministically **1-to-1** to standard Java (and back).
 - Block structure is defined by **Python-style indentation** and a trailing colon (`:`), eliminating curly braces `{}` and semicolons `;`.
 - Function, method, parameter, variable, and field declarations use **Pythonic `def` and `name: type` annotations**, with `-> ret_type` for return types.
 - Generics use Python-style square brackets (`list[i32]`, `dict[str, f64]`, `Optional[User]`) with automatic primitive-to-boxed mapping (`i32` → `int` in value position, `Integer` inside `<...>`).
@@ -12,9 +12,9 @@ Unlike Kotlin, Groovy, or Scala—which introduce their own compilers, standard 
 
 ---
 
-## 1. How Magma Compares to Java, Kotlin, Groovy, and Scala
+## 1. How Lava Compares to Java, Kotlin, Groovy, and Scala
 
-| Feature | Java | Kotlin | Groovy | Scala 3 | **Magma (`.magma`)** |
+| Feature | Java | Kotlin | Groovy | Scala 3 | **Lava (`.lava`)** |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Block delimiters** | `{ ... }` | `{ ... }` | `{ ... }` | Indentation | **Indentation (`:`)** |
 | **Statement terminators** | `;` required | Optional | Optional | Optional | **Newline (no `;`)** |
@@ -27,7 +27,7 @@ Unlike Kotlin, Groovy, or Scala—which introduce their own compilers, standard 
 
 ---
 
-## 2. Side-by-Side Comparison: Java vs. Magma
+## 2. Side-by-Side Comparison: Java vs. Lava
 
 ### Standard Java (`.java`)
 ```java
@@ -73,9 +73,9 @@ public class Shapes {
 }
 ```
 
-### Magma (`.magma`)
+### Lava (`.lava`)
 ```python
-# Geometry & Shapes in Magma (4-space indentation)
+# Geometry & Shapes in Lava (4-space indentation)
 
 public class Shapes:
     PI = 3.141592653589793
@@ -128,7 +128,7 @@ public class Shapes:
 
 ### 3.2 Comments, Packages, Imports & Constants
 
-| Magma Syntax | Transpiled Java Syntax | Notes |
+| Lava Syntax | Transpiled Java Syntax | Notes |
 | :--- | :--- | :--- |
 | `# full-line or inline comment` | `// full-line or inline comment` | Outside string/char literals |
 | `package com.example.app` | `package com.example.app;` | Package declaration |
@@ -140,9 +140,9 @@ public class Shapes:
 
 ### 3.3 Type Aliases, Arrays & `[T]` Generics
 
-Magma provides concise primitive and collection type aliases that automatically map to Java primitives in value/array positions and to boxed types inside generic type arguments (`[T]` ↔ `<T>`):
+Lava provides concise primitive and collection type aliases that automatically map to Java primitives in value/array positions and to boxed types inside generic type arguments (`[T]` ↔ `<T>`):
 
-| Magma Type | Java Primitive / Value Type | Java Boxed Generic Argument |
+| Lava Type | Java Primitive / Value Type | Java Boxed Generic Argument |
 | :--- | :--- | :--- |
 | `i8` | `byte` | `Byte` |
 | `i16` | `short` | `Short` |
@@ -163,7 +163,7 @@ Magma provides concise primitive and collection type aliases that automatically 
 
 ### 3.4 Declarations (Variables, Fields, Arrays, Methods, Classes, Records, Enums)
 
-| Construct | Magma Syntax | Transpiled Java Syntax |
+| Construct | Lava Syntax | Transpiled Java Syntax |
 | :--- | :--- | :--- |
 | **Variable / Field** | `x: i32 = 10` | `int x = 10;` |
 | **Final (`const`)** | `const limit: i32 = 100` | `final int limit = 100;` |
@@ -183,7 +183,7 @@ Magma provides concise primitive and collection type aliases that automatically 
 
 ### 3.5 Control Flow & Loops
 
-| Construct | Magma Syntax | Transpiled Java Syntax |
+| Construct | Lava Syntax | Transpiled Java Syntax |
 | :--- | :--- | :--- |
 | **Conditional** | `if a and not b:` | `if (a && !b) {` |
 | **Else-if** | `elif a or c:` | `} else if (a \|\| c) {` |
@@ -202,9 +202,9 @@ Magma provides concise primitive and collection type aliases that automatically 
 
 ### 3.6 List, Set, and Dict Comprehensions (Arrays & Java Collections)
 
-Magma supports Pythonic **list (`[...]`), set (`{...}`), and dict (`{k: v ...}`) comprehensions** with an optional `if` filter for both **fixed-size Java arrays** (zero boxing overhead) and **Java Collections** (`ArrayList`, `TreeSet`, `TreeMap`):
+Lava supports Pythonic **list (`[...]`), set (`{...}`), and dict (`{k: v ...}`) comprehensions** with an optional `if` filter for both **fixed-size Java arrays** (zero boxing overhead) and **Java Collections** (`ArrayList`, `TreeSet`, `TreeMap`):
 
-| Comprehension Kind | Target Type | Magma Syntax | Transpiled Java Code |
+| Comprehension Kind | Target Type | Lava Syntax | Transpiled Java Code |
 | :--- | :--- | :--- | :--- |
 | **Array List Comp** | `T[N]` | `sq: i32[8] = [i * i for i in range(8)]` | `int[] sq = new int[8];`<br>`for (int i = 0; i < 8; i++) { sq[i] = i * i; }` |
 | **Array Set Comp** | `bool[N]` | `ev: bool[16] = {i for i in range(16) if i % 2 == 0}` | `boolean[] ev = new boolean[16];`<br>`for (int i = 0; i < 16; i++) { if (i % 2 == 0) { ev[i] = true; } }` |
@@ -213,11 +213,11 @@ Magma supports Pythonic **list (`[...]`), set (`{...}`), and dict (`{k: v ...}`)
 | **Java `TreeSet`** | `set[T]` | `s: set[i32] = {x for x in v}` | `TreeSet<Integer> s = new TreeSet<>();`<br>`for (var x : v) { s.add(x); }` |
 | **Java `TreeMap`** | `dict[K, V]` | `m: dict[i32, i32] = {x: x + 1 for x in s if x < 100}` | `TreeMap<Integer, Integer> m = new TreeMap<>();`<br>`for (var x : s) { if (x < 100) { m.put(x, x + 1); } }` |
 
-All 6 comprehension forms are **100% bijective**: `magma --from-java` recognizes the generated Java initialization loops and folds them back into single-line Magma comprehensions.
+All 6 comprehension forms are **100% bijective**: `lava --from-java` recognizes the generated Java initialization loops and folds them back into single-line Lava comprehensions.
 
 ### 3.7 Expressions, Operators, Casts & Console Built-ins
 
-| Magma Token / Call | Java Equivalent | Purpose |
+| Lava Token / Call | Java Equivalent | Purpose |
 | :--- | :--- | :--- |
 | `and` | `&&` | Logical AND |
 | `or` | `\|\|` | Logical OR |
@@ -295,7 +295,7 @@ simple_stmt     = "return" [expr] | "break" | "continue" | "pass" | expr ;
 Requires a standard JDK (`javac` and `java`, JDK 17+ recommended):
 
 ```sh
-make          # Compiles Magma.java and packages the standalone ./magma executable
+make          # Compiles Lava.java and packages the standalone ./lava executable
 make test     # Runs the 18-case bidirectional conformance test suite
 make bench    # Runs the transpilation throughput & code size benchmark
 ```
@@ -303,38 +303,38 @@ make bench    # Runs the transpilation throughput & code size benchmark
 ### CLI Commands
 
 ```sh
-# 1. Transpile Magma (.magma) to standard Java (.java) on stdout
-./magma examples/shapes.magma
+# 1. Transpile Lava (.lava) to standard Java (.java) on stdout
+./lava examples/shapes.lava
 
 # 2. Transpile, compile via javac, and run immediately
-./magma --run examples/shapes.magma
-./magma --run examples/comprehensions.magma
-./magma --run examples/lmon.magma
+./lava --run examples/shapes.lava
+./lava --run examples/comprehensions.lava
+./lava --run examples/lmon.lava
 
-# 3. Compile Magma (.magma) into a standalone executable binary
-./magma --compile examples/shapes.magma -o shapes
+# 3. Compile Lava (.lava) into a standalone executable binary
+./lava --compile examples/shapes.lava -o shapes
 ./shapes
 
-# 4. Convert existing Java (.java) source to Magma (4 spaces, 2 spaces, or tabs)
-./magma --from-java SomeClass.java
-./magma --from-java --indent 2 SomeClass.java
-./magma --from-java --indent tab SomeClass.java
+# 4. Convert existing Java (.java) source to Lava (4 spaces, 2 spaces, or tabs)
+./lava --from-java SomeClass.java
+./lava --from-java --indent 2 SomeClass.java
+./lava --from-java --indent tab SomeClass.java
 
-# 5. Canonicalize / re-indent a Magma file
-./magma --magma --indent 4 examples/tabs.magma
+# 5. Canonicalize / re-indent a Lava file
+./lava --lava --indent 4 examples/tabs.lava
 ```
 
 ---
 
 ## 6. Benchmark Results (250 Methods, 1,000 Iterations)
 
-Measured on Apple Silicon (`aarch64`, OpenJDK 25) via `./magma --bench`:
+Measured on Apple Silicon (`aarch64`, OpenJDK 25) via `./lava --bench`:
 
 | Metric | Result |
 | :--- | :--- |
 | **Java source size** | `107,675 bytes` (`105.2 KiB`) |
-| **Magma 4-space size** | `93,906 bytes` (`91.7 KiB`, **`-12.8%` smaller than Java**) |
-| **Magma tab (`\t`) size** | `72,879 bytes` (`71.2 KiB`, **`-32.3%` smaller than Java**) |
-| **Magma (4-space) → Java** | **`472 files/s`** (`42.3 MiB/s`) |
-| **Magma (tab) → Java** | **`502 files/s`** (`34.9 MiB/s`) |
-| **Java → Magma (4-space)** | **`379 files/s`** (`38.9 MiB/s`) |
+| **Lava 4-space size** | `93,906 bytes` (`91.7 KiB`, **`-12.8%` smaller than Java**) |
+| **Lava tab (`\t`) size** | `72,879 bytes` (`71.2 KiB`, **`-32.3%` smaller than Java**) |
+| **Lava (4-space) → Java** | **`472 files/s`** (`42.3 MiB/s`) |
+| **Lava (tab) → Java** | **`502 files/s`** (`34.9 MiB/s`) |
+| **Java → Lava (4-space)** | **`379 files/s`** (`38.9 MiB/s`) |

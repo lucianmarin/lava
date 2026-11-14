@@ -1,4 +1,4 @@
-# lmon.magma - JVM & System Resource Monitor in Magma
+# lmon.lava - JVM & System Resource Monitor in Lava
 
 import java.util.ArrayList
 import java.util.TreeMap
@@ -88,7 +88,7 @@ public class Lmon:
         pcts: list[f64] = [s.usage_pct for s in samples]
         by_name: dict[str, f64] = {s.name: s.used_mib for s in samples}
 
-        printf("=== LMON: Magma JVM & System Monitor ===\n")
+        printf("=== LMON: Lava JVM & System Monitor ===\n")
         printf("OS: %s (%s) | CPUs: %d | Load Avg: %.2f | JVM Uptime: %.2fs\n", osBean.getName(), osBean.getArch(), cpus, load, uptime_sec)
         printf("Live Threads: %d (Peak: %d, Daemon: %d)\n\n", thBean.getThreadCount(), thBean.getPeakThreadCount(), thBean.getDaemonThreadCount())
 

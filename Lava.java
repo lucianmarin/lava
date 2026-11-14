@@ -1,7 +1,7 @@
 /*
- * Magma — Pythonic Java Bidirectional Transpiler (single-file Java implementation).
+ * Lava — Pythonic Java Bidirectional Transpiler (single-file Java implementation).
  *
- * Magma is to Java what Pura is to C/C++ and LMON is to JSON:
+ * Lava is to Java what Pura is to C/C++ and LMON is to JSON:
  *   - Strict, lossless 1-to-1 structural equivalence with Java
  *   - Pythonic indentation (`:` blocks instead of `{` `}`, no trailing `;` noise)
  *   - Pythonic declarations (`def fn(a: i32) -> i32:`, `x: i32 = 10`, `buf: char[64]`)
@@ -13,14 +13,14 @@
  *
  * Build & CLI usage:
  *   make
- *   ./magma examples/hello.magma
- *   ./magma --magma [--indent <N|tab>] examples/hello.magma
- *   ./magma --from-java Hello.java
- *   ./magma --compile examples/hello.magma -o hello
- *   ./magma --run examples/hello.magma
- *   ./magma --check examples/hello.magma
- *   ./magma --test
- *   ./magma --bench [file.magma]
+ *   ./lava examples/hello.lava
+ *   ./lava --lava [--indent <N|tab>] examples/hello.lava
+ *   ./lava --from-java Hello.java
+ *   ./lava --compile examples/hello.lava -o hello
+ *   ./lava --run examples/hello.lava
+ *   ./lava --check examples/hello.lava
+ *   ./lava --test
+ *   ./lava --bench [file.lava]
  */
 
 import java.io.File;
@@ -43,17 +43,17 @@ import java.util.jar.Manifest;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 
-public class Magma {
+public class Lava {
 
     /* -------------------------------------------------------------------------
      * Public Error & Exception Types
      * ------------------------------------------------------------------------- */
 
-    public static class MagmaException extends Exception {
+    public static class LavaException extends Exception {
         public final int line;
         public final int col;
 
-        public MagmaException(String message, int line, int col) {
+        public LavaException(String message, int line, int col) {
             super(message);
             this.line = line;
             this.col = col;
@@ -150,7 +150,7 @@ public class Magma {
         }
     }
 
-    private static String mapMagmaWordToJava(String w, boolean inGeneric) {
+    private static String mapLavaWordToJava(String w, boolean inGeneric) {
         if (inGeneric) {
             for (String[] pair : BOXED_TYPE_MAP) {
                 if (pair[0].equals(w)) return pair[1];
@@ -171,7 +171,7 @@ public class Magma {
         };
     }
 
-    private static String mapJavaWordToMagma(String w) {
+    private static String mapJavaWordToLava(String w) {
         return switch (w) {
             case "byte", "Byte"       -> "i8";
             case "short", "Short"     -> "i16";
@@ -189,7 +189,7 @@ public class Magma {
         };
     }
 
-    private static boolean isMagmaScalarCastWord(String w) {
+    private static boolean isLavaScalarCastWord(String w) {
         return switch (w) {
             case "i8", "i16", "i32", "i64", "f32", "f64", "byte", "short", "int", "long", "float", "double", "char" -> true;
             default -> false;
@@ -219,7 +219,7 @@ public class Magma {
             if (!isIdentCont(c) && c != '.') return false;
         }
         if (isJavaPrimitiveCastType(s)) return true;
-        if (mapJavaWordToMagma(s) != null) return true;
+        if (mapJavaWordToLava(s) != null) return true;
         if (KNOWN_TAGS.contains(s)) return true;
         if (JAVA_UTIL_CLASSES.contains(s)) return true;
         return false;
@@ -278,14 +278,14 @@ public class Magma {
         return res;
     }
 
-    /* Translate a Magma type specification to Java (`list[i32]` -> `ArrayList<Integer>`, `i32[]` -> `int[]`, etc.) */
-    private static String translateTypeMagmaToJava(String raw, boolean inGeneric) {
+    /* Translate a Lava type specification to Java (`list[i32]` -> `ArrayList<Integer>`, `i32[]` -> `int[]`, etc.) */
+    private static String translateTypeLavaToJava(String raw, boolean inGeneric) {
         String s = raw.trim();
         if (s.isEmpty()) return "";
 
         /* Handle trailing varargs `...` */
         if (s.endsWith("...")) {
-            return translateTypeMagmaToJava(s.substring(0, s.length() - 3), false) + "...";
+            return translateTypeLavaToJava(s.substring(0, s.length() - 3), false) + "...";
         }
 
         /* Handle trailing empty array brackets `[]` */
@@ -308,13 +308,13 @@ public class Magma {
                     case "unordered_set" -> "HashSet";
                     case "dict"          -> "TreeMap";
                     case "unordered_map" -> "HashMap";
-                    default              -> translateTypeMagmaToJava(base, false);
+                    default              -> translateTypeLavaToJava(base, false);
                 };
                 List<String> targs = splitTopLevelCommas(inner);
                 StringBuilder sb = new StringBuilder(javaBase).append('<');
                 for (int i = 0; i < targs.size(); i++) {
                     if (i > 0) sb.append(", ");
-                    sb.append(translateTypeMagmaToJava(targs.get(i), true));
+                    sb.append(translateTypeLavaToJava(targs.get(i), true));
                 }
                 sb.append('>').append(arraySuffix);
                 return sb.toString();
@@ -322,21 +322,21 @@ public class Magma {
         }
 
         /* Check direct primitive/boxed word */
-        String mapped = mapMagmaWordToJava(s, elemInGeneric);
+        String mapped = mapLavaWordToJava(s, elemInGeneric);
         if (mapped != null) {
             return mapped + arraySuffix;
         }
 
-        return translateTokensMagmaToJava(s) + arraySuffix;
+        return translateTokensLavaToJava(s) + arraySuffix;
     }
 
-    /* Translate a Java type specification to Magma (`ArrayList<Integer>` -> `list[i32]`, `int[]` -> `i32[]`) */
-    private static String translateTypeJavaToMagma(String raw) {
+    /* Translate a Java type specification to Lava (`ArrayList<Integer>` -> `list[i32]`, `int[]` -> `i32[]`) */
+    private static String translateTypeJavaToLava(String raw) {
         String s = raw.trim();
         if (s.isEmpty()) return "";
 
         if (s.endsWith("...")) {
-            return translateTypeJavaToMagma(s.substring(0, s.length() - 3)) + "...";
+            return translateTypeJavaToLava(s.substring(0, s.length() - 3)) + "...";
         }
 
         StringBuilder arraySuffix = new StringBuilder();
@@ -349,37 +349,37 @@ public class Magma {
         if (openAngle > 0 && findMatchingDelim(s, openAngle, '<', '>') == s.length() - 1) {
             String base = s.substring(0, openAngle).trim();
             String inner = s.substring(openAngle + 1, s.length() - 1).trim();
-            String magmaBase = switch (base) {
+            String lavaBase = switch (base) {
                 case "ArrayList", "java.util.ArrayList" -> "list";
                 case "TreeSet", "java.util.TreeSet"     -> "set";
                 case "HashSet", "java.util.HashSet"     -> "unordered_set";
                 case "TreeMap", "java.util.TreeMap"     -> "dict";
                 case "HashMap", "java.util.HashMap"     -> "unordered_map";
-                default -> translateTypeJavaToMagma(base);
+                default -> translateTypeJavaToLava(base);
             };
             if (inner.isEmpty()) {
-                return magmaBase + arraySuffix;
+                return lavaBase + arraySuffix;
             }
             List<String> targs = splitTopLevelCommas(inner);
-            StringBuilder sb = new StringBuilder(magmaBase).append('[');
+            StringBuilder sb = new StringBuilder(lavaBase).append('[');
             for (int i = 0; i < targs.size(); i++) {
                 if (i > 0) sb.append(", ");
-                sb.append(translateTypeJavaToMagma(targs.get(i)));
+                sb.append(translateTypeJavaToLava(targs.get(i)));
             }
             sb.append(']').append(arraySuffix);
             return sb.toString();
         }
 
-        String mapped = mapJavaWordToMagma(s);
+        String mapped = mapJavaWordToLava(s);
         if (mapped != null) {
             return mapped + arraySuffix;
         }
 
-        return translateTokensJavaToMagma(s) + arraySuffix;
+        return translateTokensJavaToLava(s) + arraySuffix;
     }
 
-    private static void emitCastMagmaToJava(StringBuilder out, String typeStr, String innerStr) {
-        out.append('(').append(translateTypeMagmaToJava(typeStr, false)).append(')');
+    private static void emitCastLavaToJava(StringBuilder out, String typeStr, String innerStr) {
+        out.append('(').append(translateTypeLavaToJava(typeStr, false)).append(')');
         String inner = innerStr.trim();
         boolean simplePostfix = true;
         int pdepth = 0;
@@ -395,14 +395,14 @@ public class Magma {
             }
         }
         if (simplePostfix) {
-            out.append(translateTokensMagmaToJava(inner));
+            out.append(translateTokensLavaToJava(inner));
         } else {
-            out.append('(').append(translateTokensMagmaToJava(inner)).append(')');
+            out.append('(').append(translateTokensLavaToJava(inner)).append(')');
         }
     }
 
-    /* Translate expression tokens from Magma to Java, respecting string/char literals */
-    private static String translateTokensMagmaToJava(String s) {
+    /* Translate expression tokens from Lava to Java, respecting string/char literals */
+    private static String translateTokensLavaToJava(String s) {
         StringBuilder out = new StringBuilder(s.length() + 16);
         int len = s.length();
         int i = 0;
@@ -439,7 +439,7 @@ public class Magma {
                         int closeB = findMatchingDelim(s, te, '[', ']');
                         if (closeB < len && closeB + 1 < len && s.charAt(closeB + 1) == '(') {
                             String magType = s.substring(ts, closeB + 1);
-                            out.append("new ").append(translateTypeMagmaToJava(magType, false));
+                            out.append("new ").append(translateTypeLavaToJava(magType, false));
                             i = closeB + 1;
                             continue;
                         }
@@ -453,7 +453,7 @@ public class Magma {
                         String args = s.substring(i + 1, closeP);
                         List<String> parts = splitTopLevelCommas(args);
                         if (parts.size() == 2) {
-                            emitCastMagmaToJava(out, parts.get(0), parts.get(1));
+                            emitCastLavaToJava(out, parts.get(0), parts.get(1));
                             i = closeP + 1;
                             continue;
                         }
@@ -466,9 +466,9 @@ public class Magma {
                     if (closeP < len) {
                         List<String> parts = splitTopLevelCommas(s.substring(i + 1, closeP));
                         if (parts.size() == 2) {
-                            out.append(translateTokensMagmaToJava(parts.get(0)))
+                            out.append(translateTokensLavaToJava(parts.get(0)))
                                .append(" instanceof ")
-                               .append(translateTypeMagmaToJava(parts.get(1), false));
+                               .append(translateTypeLavaToJava(parts.get(1), false));
                             i = closeP + 1;
                             continue;
                         }
@@ -476,10 +476,10 @@ public class Magma {
                 }
 
                 /* Pythonic scalar value conversion: `i32(x)`, `f64(x)`, `i64(x)`, `i8(x)` -> `(int)x`, `(double)x` */
-                if (!isMember && i < len && s.charAt(i) == '(' && isMagmaScalarCastWord(word)) {
+                if (!isMember && i < len && s.charAt(i) == '(' && isLavaScalarCastWord(word)) {
                     int closeP = findMatchingParen(s, i);
                     if (closeP < len) {
-                        emitCastMagmaToJava(out, word, s.substring(i + 1, closeP));
+                        emitCastLavaToJava(out, word, s.substring(i + 1, closeP));
                         i = closeP + 1;
                         continue;
                     }
@@ -492,7 +492,7 @@ public class Magma {
                     continue;
                 }
 
-                String rep = isMember ? null : mapMagmaWordToJava(word, false);
+                String rep = isMember ? null : mapLavaWordToJava(word, false);
                 if (rep != null) {
                     if (rep.equals("!") && i < len && s.charAt(i) == ' ') {
                         out.append('!');
@@ -550,8 +550,8 @@ public class Magma {
         return i;
     }
 
-    /* Translate expression tokens from Java to Magma, respecting string/char literals */
-    private static String translateTokensJavaToMagma(String s) {
+    /* Translate expression tokens from Java to Lava, respecting string/char literals */
+    private static String translateTokensJavaToLava(String s) {
         StringBuilder out = new StringBuilder(s.length() + 16);
         int len = s.length();
         int i = 0;
@@ -627,15 +627,15 @@ public class Magma {
                                 argSlice = argSlice.substring(1, argSlice.length() - 1).trim();
                             }
                             if (isJavaPrimitiveCastType(typeSlice)) {
-                                out.append(translateTypeJavaToMagma(typeSlice))
+                                out.append(translateTypeJavaToLava(typeSlice))
                                    .append('(')
-                                   .append(translateTokensJavaToMagma(argSlice))
+                                   .append(translateTokensJavaToLava(argSlice))
                                    .append(')');
                             } else {
                                 out.append("cast(")
-                                   .append(translateTypeJavaToMagma(typeSlice))
+                                   .append(translateTypeJavaToLava(typeSlice))
                                    .append(", ")
-                                   .append(translateTokensJavaToMagma(argSlice))
+                                   .append(translateTokensJavaToLava(argSlice))
                                    .append(')');
                             }
                             i = opEnd;
@@ -661,14 +661,14 @@ public class Magma {
                         int closeA = findMatchingDelim(s, te, '<', '>');
                         if (closeA < len && closeA + 1 < len && s.charAt(closeA + 1) == '(') {
                             String jType = s.substring(ts, closeA + 1);
-                            out.append("new ").append(translateTypeJavaToMagma(jType));
+                            out.append("new ").append(translateTypeJavaToLava(jType));
                             i = closeA + 1;
                             continue;
                         }
                     }
                 }
 
-                String rep = isMember ? null : mapJavaWordToMagma(word);
+                String rep = isMember ? null : mapJavaWordToLava(word);
                 if (rep != null) {
                     out.append(rep);
                 } else {
@@ -682,8 +682,8 @@ public class Magma {
         return out.toString();
     }
 
-    /* Check if a Magma type has fixed-size array dimensions `T[N]` or `T[N][M]` (not generic `list[T]`, `dict[K, V]`, etc., and not empty `T[]`) */
-    private static int findMagmaSizedArrayBracket(String typeStr) {
+    /* Check if a Lava type has fixed-size array dimensions `T[N]` or `T[N][M]` (not generic `list[T]`, `dict[K, V]`, etc., and not empty `T[]`) */
+    private static int findLavaSizedArrayBracket(String typeStr) {
         String s = typeStr.trim();
         int len = s.length();
         int scanStart = 0;
@@ -705,7 +705,7 @@ public class Magma {
                 if (closeB > i + 1) {
                     String dim = s.substring(i + 1, closeB).trim();
                     /* If dim is a type name (like `i32`, `str`, or contains `,`), it's a generic parameter, not an array size */
-                    if (dim.contains(",") || mapMagmaWordToJava(dim, true) != null || KNOWN_TAGS.contains(dim)) {
+                    if (dim.contains(",") || mapLavaWordToJava(dim, true) != null || KNOWN_TAGS.contains(dim)) {
                         return -1;
                     }
                     return i;
@@ -719,11 +719,11 @@ public class Magma {
     private static String formatJavaTypedDecl(String nameStr, String typeStr, boolean allowSizedArrayAlloc) {
         String name = nameStr.trim();
         String type = typeStr.trim();
-        int sizedIdx = findMagmaSizedArrayBracket(type);
+        int sizedIdx = findLavaSizedArrayBracket(type);
         if (sizedIdx > 0) {
             String baseType = type.substring(0, sizedIdx).trim();
             String dimsRaw = type.substring(sizedIdx).trim();
-            String javaElemType = translateTypeMagmaToJava(baseType, false);
+            String javaElemType = translateTypeLavaToJava(baseType, false);
 
             /* Count dimensions `[N][M]` -> `[][]` and translate inside each `[...]` */
             StringBuilder emptyBrackets = new StringBuilder();
@@ -735,7 +735,7 @@ public class Magma {
                     if (closeB < dimsRaw.length()) {
                         emptyBrackets.append("[]");
                         translatedDims.append('[')
-                                      .append(translateTokensMagmaToJava(dimsRaw.substring(i + 1, closeB).trim()))
+                                      .append(translateTokensLavaToJava(dimsRaw.substring(i + 1, closeB).trim()))
                                       .append(']');
                         i = closeB + 1;
                         continue;
@@ -745,17 +745,17 @@ public class Magma {
             }
 
             if (allowSizedArrayAlloc) {
-                return javaElemType + emptyBrackets + " " + translateTokensMagmaToJava(name)
+                return javaElemType + emptyBrackets + " " + translateTokensLavaToJava(name)
                      + " = new " + javaElemType + translatedDims;
             } else {
-                return javaElemType + emptyBrackets + " " + translateTokensMagmaToJava(name);
+                return javaElemType + emptyBrackets + " " + translateTokensLavaToJava(name);
             }
         }
 
-        return translateTypeMagmaToJava(type, false) + " " + translateTokensMagmaToJava(name);
+        return translateTypeLavaToJava(type, false) + " " + translateTokensLavaToJava(name);
     }
 
-    /* Convert a Magma parameter list `(a: i32, b: str)` into Java `(int a, String b)` */
+    /* Convert a Lava parameter list `(a: i32, b: str)` into Java `(int a, String b)` */
     private static String formatJavaParamList(String paramsRaw) {
         String params = paramsRaw.trim();
         if (params.isEmpty()) return "";
@@ -782,14 +782,14 @@ public class Magma {
                     out.append(formatJavaTypedDecl(pname, ptype, false));
                 }
             } else {
-                out.append(translateTokensMagmaToJava(p));
+                out.append(translateTokensLavaToJava(p));
             }
         }
         return out.toString();
     }
 
     /* -------------------------------------------------------------------------
-     * Magma -> Java Transpiler
+     * Lava -> Java Transpiler
      * ------------------------------------------------------------------------- */
 
     private enum BlockKind {
@@ -843,7 +843,7 @@ public class Magma {
     /* Find top-level single `:` for variable/field declaration `[mods] x: type [= val]` */
     private record DeclSplit(String mods, String name, String type, String rhs) {}
 
-    private static DeclSplit parseMagmaDecl(String s) {
+    private static DeclSplit parseLavaDecl(String s) {
         int depth = 0;
         char quote = 0;
         int colonIdx = -1;
@@ -911,7 +911,7 @@ public class Magma {
     }
 
     /* Try to emit a Pythonic constant `MAX_ITEMS = 64` at root or class body level */
-    private static String tryEmitMagmaConstAssign(String s) {
+    private static String tryEmitLavaConstAssign(String s) {
         if (s.isEmpty() || !isIdentStart(s.charAt(0))) return null;
         int i = 0;
         int len = s.length();
@@ -931,7 +931,7 @@ public class Magma {
         else if (rhs.endsWith("L") || rhs.endsWith("l")) inferredType = "long";
         else if (rhs.contains(".")) inferredType = "double";
 
-        return "public static final " + inferredType + " " + name + " = " + translateTokensMagmaToJava(rhs) + ";";
+        return "public static final " + inferredType + " " + name + " = " + translateTokensLavaToJava(rhs) + ";";
     }
 
     /* Parse optional method modifiers followed by `def` or `fn` */
@@ -959,7 +959,7 @@ public class Magma {
         return new String[]{modPart, trimmed.substring(defIdx + kwLen).trim()};
     }
 
-    private static String emitMagmaFunctionDef(String prefixQual, String rest, boolean isBlock) {
+    private static String emitLavaFunctionDef(String prefixQual, String rest, boolean isBlock) {
         int lparen = rest.indexOf('(');
         if (lparen <= 0) return null;
         int rparen = findMatchingParen(rest, lparen);
@@ -972,7 +972,7 @@ public class Magma {
         String throwsClause = "";
         int throwsIdx = after.indexOf("throws ");
         if (throwsIdx >= 0) {
-            throwsClause = " " + translateTokensMagmaToJava(after.substring(throwsIdx).trim());
+            throwsClause = " " + translateTokensLavaToJava(after.substring(throwsIdx).trim());
             after = after.substring(0, throwsIdx).trim();
         }
 
@@ -1003,9 +1003,9 @@ public class Magma {
             out.append(qual).append(' ');
         }
         if (!isConstructor) {
-            out.append(translateTypeMagmaToJava(retType, false)).append(' ');
+            out.append(translateTypeLavaToJava(retType, false)).append(' ');
         }
-        out.append(translateTokensMagmaToJava(fname))
+        out.append(translateTokensLavaToJava(fname))
            .append('(')
            .append(formatJavaParamList(paramsRaw))
            .append(')')
@@ -1048,21 +1048,21 @@ public class Magma {
                 StringBuilder sb = new StringBuilder("for (");
                 sb.append(formatJavaTypedDecl(vname, vtype, false))
                   .append(" = ")
-                  .append(translateTokensMagmaToJava(startS))
+                  .append(translateTokensLavaToJava(startS))
                   .append("; ")
-                  .append(translateTokensMagmaToJava(vname))
+                  .append(translateTokensLavaToJava(vname))
                   .append(negStep ? " > " : " < ")
-                  .append(translateTokensMagmaToJava(stopS))
+                  .append(translateTokensLavaToJava(stopS))
                   .append("; ")
-                  .append(translateTokensMagmaToJava(vname));
+                  .append(translateTokensLavaToJava(vname));
                 if (stepS == null || stepS.equals("1")) {
                     sb.append("++");
                 } else if (negStep && stepS.equals("-1")) {
                     sb.append("--");
                 } else if (negStep) {
-                    sb.append(" -= ").append(translateTokensMagmaToJava(stepS.substring(1).trim()));
+                    sb.append(" -= ").append(translateTokensLavaToJava(stepS.substring(1).trim()));
                 } else {
-                    sb.append(" += ").append(translateTokensMagmaToJava(stepS));
+                    sb.append(" += ").append(translateTokensLavaToJava(stepS));
                 }
                 sb.append(") {");
                 return sb.toString();
@@ -1074,9 +1074,9 @@ public class Magma {
         if (vcolon >= 0) {
             sb.append(formatJavaTypedDecl(vname, vtype, false));
         } else {
-            sb.append("var ").append(translateTokensMagmaToJava(vname));
+            sb.append("var ").append(translateTokensLavaToJava(vname));
         }
-        sb.append(" : ").append(translateTokensMagmaToJava(rhs)).append(") {");
+        sb.append(" : ").append(translateTokensLavaToJava(rhs)).append(") {");
         return sb.toString();
     }
 
@@ -1086,8 +1086,8 @@ public class Magma {
         DICT
     }
 
-    /* Emit Java initialization + loop for a Magma list/set/dict comprehension */
-    private static boolean tryEmitMagmaComprehension(StringBuilder out,
+    /* Emit Java initialization + loop for a Lava list/set/dict comprehension */
+    private static boolean tryEmitLavaComprehension(StringBuilder out,
                                                      String mods, String lhsName, String typeStr, String valStr,
                                                      String javaIndent, int level) {
         String val = valStr.trim();
@@ -1199,7 +1199,7 @@ public class Magma {
             }
         }
 
-        int sizedArrIdx = findMagmaSizedArrayBracket(typeStr);
+        int sizedArrIdx = findLavaSizedArrayBracket(typeStr);
         boolean isJavaArray = (sizedArrIdx > 0);
 
         /* Emit declaration line */
@@ -1207,10 +1207,10 @@ public class Magma {
         if (isJavaArray) {
             out.append(formatJavaTypedDecl(lhsName, typeStr, true)).append(";\n");
         } else {
-            String javaType = translateTypeMagmaToJava(typeStr, false);
+            String javaType = translateTypeLavaToJava(typeStr, false);
             int angleIdx = javaType.indexOf('<');
             String rawCollection = (angleIdx > 0) ? javaType.substring(0, angleIdx) : javaType;
-            out.append(javaType).append(' ').append(translateTokensMagmaToJava(lhsName))
+            out.append(javaType).append(' ').append(translateTokensLavaToJava(lhsName))
                .append(" = new ").append(rawCollection).append("<>();\n");
         }
 
@@ -1220,39 +1220,39 @@ public class Magma {
         if (forHeader != null) {
             out.append(forHeader).append('\n');
         } else {
-            out.append("for (").append(translateTokensMagmaToJava(forClause)).append(") {\n");
+            out.append("for (").append(translateTokensLavaToJava(forClause)).append(") {\n");
         }
 
         /* Optional `if (cond) {` filter */
         if (condStr != null) {
             appendIndent(out, javaIndent, level + 1);
-            out.append("if (").append(translateTokensMagmaToJava(condStr)).append(") {\n");
+            out.append("if (").append(translateTokensLavaToJava(condStr)).append(") {\n");
         }
 
         int bodyLevel = level + (condStr != null ? 2 : 1);
         appendIndent(out, javaIndent, bodyLevel);
-        out.append(translateTokensMagmaToJava(lhsName));
+        out.append(translateTokensLavaToJava(lhsName));
 
         if (kind == CompKind.LIST) {
             if (isJavaArray) {
-                out.append('[').append(translateTokensMagmaToJava(vname)).append("] = ")
-                   .append(translateTokensMagmaToJava(elemStr)).append(";\n");
+                out.append('[').append(translateTokensLavaToJava(vname)).append("] = ")
+                   .append(translateTokensLavaToJava(elemStr)).append(";\n");
             } else {
-                out.append(".add(").append(translateTokensMagmaToJava(elemStr)).append(");\n");
+                out.append(".add(").append(translateTokensLavaToJava(elemStr)).append(");\n");
             }
         } else if (kind == CompKind.SET) {
             if (isJavaArray) {
-                out.append('[').append(translateTokensMagmaToJava(elemStr)).append("] = true;\n");
+                out.append('[').append(translateTokensLavaToJava(elemStr)).append("] = true;\n");
             } else {
-                out.append(".add(").append(translateTokensMagmaToJava(elemStr)).append(");\n");
+                out.append(".add(").append(translateTokensLavaToJava(elemStr)).append(");\n");
             }
         } else {
             if (isJavaArray) {
-                out.append('[').append(translateTokensMagmaToJava(keyStr)).append("] = ")
-                   .append(translateTokensMagmaToJava(elemStr)).append(";\n");
+                out.append('[').append(translateTokensLavaToJava(keyStr)).append("] = ")
+                   .append(translateTokensLavaToJava(elemStr)).append(";\n");
             } else {
-                out.append(".put(").append(translateTokensMagmaToJava(keyStr)).append(", ")
-                   .append(translateTokensMagmaToJava(elemStr)).append(");\n");
+                out.append(".put(").append(translateTokensLavaToJava(keyStr)).append(", ")
+                   .append(translateTokensLavaToJava(elemStr)).append(");\n");
             }
         }
 
@@ -1278,7 +1278,7 @@ public class Magma {
         out.append("}\n");
     }
 
-    private static String transformClassHeaderMagmaToJava(String header) {
+    private static String transformClassHeaderLavaToJava(String header) {
         String h = header.trim();
         if (h.startsWith("struct ")) {
             h = "static class " + h.substring(7).trim();
@@ -1294,8 +1294,8 @@ public class Magma {
                 String before = h.substring(0, lp).trim();
                 String params = formatJavaParamList(h.substring(lp + 1, rp));
                 String after = h.substring(rp + 1).trim();
-                return translateTokensMagmaToJava(before) + "(" + params + ")" +
-                       (after.isEmpty() ? "" : " " + translateTokensMagmaToJava(after));
+                return translateTokensLavaToJava(before) + "(" + params + ")" +
+                       (after.isEmpty() ? "" : " " + translateTokensLavaToJava(after));
             }
         }
 
@@ -1306,16 +1306,16 @@ public class Magma {
             String before = h.substring(0, lp).trim();
             String base = h.substring(lp + 1, rp).trim();
             String after = h.substring(rp + 1).trim();
-            return translateTokensMagmaToJava(before) + " extends " + translateTypeMagmaToJava(base, false) +
-                   (after.isEmpty() ? "" : " " + translateTokensMagmaToJava(after));
+            return translateTokensLavaToJava(before) + " extends " + translateTypeLavaToJava(base, false) +
+                   (after.isEmpty() ? "" : " " + translateTokensLavaToJava(after));
         }
 
-        return translateTokensMagmaToJava(h);
+        return translateTokensLavaToJava(h);
     }
 
-    public static String magmaToJava(String src) throws MagmaException {
+    public static String lavaToJava(String src) throws LavaException {
         if (!src.isEmpty() && src.charAt(0) == '\uFEFF') {
-            throw new MagmaException("UTF-8 BOM is not allowed", 1, 1);
+            throw new LavaException("UTF-8 BOM is not allowed", 1, 1);
         }
 
         resetSymtab();
@@ -1359,12 +1359,12 @@ public class Magma {
             }
 
             if (hasSpace && hasTab) {
-                throw new MagmaException("mixed spaces and tabs in indentation", lineNo, ws);
+                throw new LavaException("mixed spaces and tabs in indentation", lineNo, ws);
             }
 
             char lastCh = src.charAt(lineEnd - 1);
             if (lastCh == ' ' || lastCh == '\t') {
-                throw new MagmaException("trailing whitespace is not allowed", lineNo, lineEnd - lineStart);
+                throw new LavaException("trailing whitespace is not allowed", lineNo, lineEnd - lineStart);
             }
 
             int level = 0;
@@ -1372,17 +1372,17 @@ public class Magma {
                 char ch = hasTab ? '\t' : ' ';
                 if (indentWidth == 0) {
                     if (currentLevel == 0 && !prevLineOpenedBlock) {
-                        throw new MagmaException("unexpected indentation at root level", lineNo, 1);
+                        throw new LavaException("unexpected indentation at root level", lineNo, 1);
                     }
                     indentChar = ch;
                     indentWidth = ws;
                     level = 1;
                 } else {
                     if (ch != indentChar) {
-                        throw new MagmaException("inconsistent indentation character (spaces vs tabs)", lineNo, 1);
+                        throw new LavaException("inconsistent indentation character (spaces vs tabs)", lineNo, 1);
                     }
                     if (ws % indentWidth != 0) {
-                        throw new MagmaException("indentation is not a multiple of the file's indent unit", lineNo, ws + 1);
+                        throw new LavaException("indentation is not a multiple of the file's indent unit", lineNo, ws + 1);
                     }
                     level = ws / indentWidth;
                 }
@@ -1392,11 +1392,11 @@ public class Magma {
 
             if (prevLineOpenedBlock && rawContent.charAt(0) != '#') {
                 if (level != currentLevel) {
-                    throw new MagmaException("expected indented block after ':'", prevBlockLine, 1);
+                    throw new LavaException("expected indented block after ':'", prevBlockLine, 1);
                 }
                 prevLineOpenedBlock = false;
             } else if (!prevLineOpenedBlock && level > currentLevel && rawContent.charAt(0) != '#') {
-                throw new MagmaException("unexpected indentation increase without a block header", lineNo, ws + 1);
+                throw new LavaException("unexpected indentation increase without a block header", lineNo, ws + 1);
             }
 
             /* Full-line `#` comment */
@@ -1443,7 +1443,7 @@ public class Magma {
                 (kwAfter = startsWithKw(content, "while")) >= 0 && !content.endsWith(":")) {
                 stack.remove(stack.size() - 1);
                 appendIndent(out, javaIndent, level);
-                out.append("} while (").append(translateTokensMagmaToJava(content.substring(kwAfter))).append(");");
+                out.append("} while (").append(translateTokensLavaToJava(content.substring(kwAfter))).append(");");
                 if (inlineComment != null) out.append(" //").append(inlineComment);
                 out.append('\n');
                 continue;
@@ -1496,7 +1496,7 @@ public class Magma {
             /* Standalone annotation `@Override` */
             if (content.startsWith("@") && !content.endsWith(":")) {
                 appendIndent(out, javaIndent, level);
-                out.append(translateTokensMagmaToJava(content));
+                out.append(translateTokensLavaToJava(content));
                 if (inlineComment != null) out.append(" //").append(inlineComment);
                 out.append('\n');
                 continue;
@@ -1509,7 +1509,7 @@ public class Magma {
                 if (isElif && !stack.isEmpty() && stack.get(stack.size() - 1).level() == level) {
                     kwAfter = startsWithKw(header, "elif");
                     appendIndent(out, javaIndent, level);
-                    out.append("} else if (").append(translateTokensMagmaToJava(header.substring(kwAfter))).append(") {");
+                    out.append("} else if (").append(translateTokensLavaToJava(header.substring(kwAfter))).append(") {");
                     currentLevel = level + 1;
                     prevLineOpenedBlock = true;
                     prevBlockLine = lineNo;
@@ -1541,14 +1541,14 @@ public class Magma {
                     prevBlockLine = lineNo;
                 } else if ((kwAfter = startsWithKw(header, "if")) >= 0) {
                     appendIndent(out, javaIndent, level);
-                    out.append("if (").append(translateTokensMagmaToJava(header.substring(kwAfter))).append(") {");
+                    out.append("if (").append(translateTokensLavaToJava(header.substring(kwAfter))).append(") {");
                     stack.add(new BlockFrame(level, BlockKind.NORMAL));
                     currentLevel = level + 1;
                     prevLineOpenedBlock = true;
                     prevBlockLine = lineNo;
                 } else if ((kwAfter = startsWithKw(header, "while")) >= 0) {
                     appendIndent(out, javaIndent, level);
-                    out.append("while (").append(translateTokensMagmaToJava(header.substring(kwAfter))).append(") {");
+                    out.append("while (").append(translateTokensLavaToJava(header.substring(kwAfter))).append(") {");
                     stack.add(new BlockFrame(level, BlockKind.NORMAL));
                     currentLevel = level + 1;
                     prevLineOpenedBlock = true;
@@ -1571,19 +1571,19 @@ public class Magma {
                         int semi1 = fexpr.indexOf(';');
                         if (semi1 > 0) {
                             String initPart = fexpr.substring(0, semi1).trim();
-                            DeclSplit ds = parseMagmaDecl(initPart);
+                            DeclSplit ds = parseLavaDecl(initPart);
                             if (ds != null) {
                                 if (!ds.mods().isEmpty()) out.append(ds.mods()).append(' ');
                                 out.append(formatJavaTypedDecl(ds.name(), ds.type(), false));
                                 if (ds.rhs() != null) {
-                                    out.append(" = ").append(translateTokensMagmaToJava(ds.rhs()));
+                                    out.append(" = ").append(translateTokensLavaToJava(ds.rhs()));
                                 }
                             } else {
-                                out.append(translateTokensMagmaToJava(initPart));
+                                out.append(translateTokensLavaToJava(initPart));
                             }
-                            out.append(translateTokensMagmaToJava(fexpr.substring(semi1)));
+                            out.append(translateTokensLavaToJava(fexpr.substring(semi1)));
                         } else {
-                            out.append(translateTokensMagmaToJava(fexpr));
+                            out.append(translateTokensLavaToJava(fexpr));
                         }
                         out.append(") {");
                     }
@@ -1594,14 +1594,14 @@ public class Magma {
                 } else if ((kwAfter = startsWithKw(header, "switch")) >= 0 ||
                            (kwAfter = startsWithKw(header, "match")) >= 0) {
                     appendIndent(out, javaIndent, level);
-                    out.append("switch (").append(translateTokensMagmaToJava(header.substring(kwAfter))).append(") {");
+                    out.append("switch (").append(translateTokensLavaToJava(header.substring(kwAfter))).append(") {");
                     stack.add(new BlockFrame(level, BlockKind.SWITCH));
                     currentLevel = level + 1;
                     prevLineOpenedBlock = true;
                     prevBlockLine = lineNo;
                 } else if ((kwAfter = startsWithKw(header, "case")) >= 0) {
                     appendIndent(out, javaIndent, level);
-                    out.append("case ").append(translateTokensMagmaToJava(header.substring(kwAfter))).append(':');
+                    out.append("case ").append(translateTokensLavaToJava(header.substring(kwAfter))).append(':');
                     stack.add(new BlockFrame(level, BlockKind.CASE));
                     currentLevel = level + 1;
                     prevLineOpenedBlock = true;
@@ -1626,7 +1626,7 @@ public class Magma {
                     if (syncExpr.startsWith("(") && syncExpr.endsWith(")")) {
                         syncExpr = syncExpr.substring(1, syncExpr.length() - 1).trim();
                     }
-                    out.append("synchronized (").append(translateTokensMagmaToJava(syncExpr)).append(") {");
+                    out.append("synchronized (").append(translateTokensLavaToJava(syncExpr)).append(") {");
                     stack.add(new BlockFrame(level, BlockKind.NORMAL));
                     currentLevel = level + 1;
                     prevLineOpenedBlock = true;
@@ -1634,7 +1634,7 @@ public class Magma {
                 } else if (header.contains("enum ") || header.startsWith("enum ")) {
                     addTag(header);
                     appendIndent(out, javaIndent, level);
-                    out.append(translateTokensMagmaToJava(header)).append(" {");
+                    out.append(translateTokensLavaToJava(header)).append(" {");
                     stack.add(new BlockFrame(level, BlockKind.ENUM));
                     currentLevel = level + 1;
                     prevLineOpenedBlock = true;
@@ -1644,7 +1644,7 @@ public class Magma {
                            header.startsWith("record ") || header.contains(" record ") ||
                            header.startsWith("struct ")) {
                     appendIndent(out, javaIndent, level);
-                    out.append(transformClassHeaderMagmaToJava(header)).append(" {");
+                    out.append(transformClassHeaderLavaToJava(header)).append(" {");
                     stack.add(new BlockFrame(level, BlockKind.CLASS_OR_INTERFACE));
                     currentLevel = level + 1;
                     prevLineOpenedBlock = true;
@@ -1653,9 +1653,9 @@ public class Magma {
                     String[] defParts = splitDefHeader(header);
                     if (defParts != null) {
                         appendIndent(out, javaIndent, level);
-                        String fnJava = emitMagmaFunctionDef(defParts[0], defParts[1], true);
+                        String fnJava = emitLavaFunctionDef(defParts[0], defParts[1], true);
                         if (fnJava == null) {
-                            throw new MagmaException("invalid function definition", lineNo, 1);
+                            throw new LavaException("invalid function definition", lineNo, 1);
                         }
                         out.append(fnJava);
                         stack.add(new BlockFrame(level, BlockKind.NORMAL));
@@ -1664,7 +1664,7 @@ public class Magma {
                         prevBlockLine = lineNo;
                     } else {
                         appendIndent(out, javaIndent, level);
-                        out.append(translateTokensMagmaToJava(header)).append(" {");
+                        out.append(translateTokensLavaToJava(header)).append(" {");
                         stack.add(new BlockFrame(level, BlockKind.NORMAL));
                         currentLevel = level + 1;
                         prevLineOpenedBlock = true;
@@ -1683,7 +1683,7 @@ public class Magma {
             /* Inside an `enum` block, constants are comma-separated */
             if (!stack.isEmpty() && stack.get(stack.size() - 1).kind() == BlockKind.ENUM &&
                 stack.get(stack.size() - 1).level() + 1 == level) {
-                out.append(translateTokensMagmaToJava(content));
+                out.append(translateTokensLavaToJava(content));
                 if (!content.endsWith(",") && !content.endsWith(";")) {
                     out.append(',');
                 }
@@ -1694,7 +1694,7 @@ public class Magma {
 
             /* Single-line `record Name(x: f64, y: f64)` without `:` */
             if (content.startsWith("record ") || content.contains(" record ")) {
-                out.append(transformClassHeaderMagmaToJava(content)).append(" {}");
+                out.append(transformClassHeaderLavaToJava(content)).append(" {}");
                 if (inlineComment != null) out.append(" //").append(inlineComment);
                 out.append('\n');
                 continue;
@@ -1703,9 +1703,9 @@ public class Magma {
             /* Method prototype without body (interface / abstract method) */
             String[] defProto = splitDefHeader(content);
             if (defProto != null) {
-                String fnJava = emitMagmaFunctionDef(defProto[0], defProto[1], false);
+                String fnJava = emitLavaFunctionDef(defProto[0], defProto[1], false);
                 if (fnJava == null) {
-                    throw new MagmaException("invalid method prototype", lineNo, 1);
+                    throw new LavaException("invalid method prototype", lineNo, 1);
                 }
                 out.append(fnJava);
                 if (inlineComment != null) out.append(" //").append(inlineComment);
@@ -1714,14 +1714,14 @@ public class Magma {
             }
 
             /* Variable or field declaration: `[mods] name: type [= value]` */
-            DeclSplit ds = parseMagmaDecl(content);
+            DeclSplit ds = parseLavaDecl(content);
             if (ds != null) {
                 if (ds.rhs() != null) {
-                    if (!tryEmitMagmaComprehension(out, ds.mods(), ds.name(), ds.type(), ds.rhs(), javaIndent, level)) {
+                    if (!tryEmitLavaComprehension(out, ds.mods(), ds.name(), ds.type(), ds.rhs(), javaIndent, level)) {
                         if (!ds.mods().isEmpty()) out.append(ds.mods()).append(' ');
                         out.append(formatJavaTypedDecl(ds.name(), ds.type(), false))
                            .append(" = ")
-                           .append(translateTokensMagmaToJava(ds.rhs()))
+                           .append(translateTokensLavaToJava(ds.rhs()))
                            .append(';');
                     }
                 } else {
@@ -1732,11 +1732,11 @@ public class Magma {
                 boolean inClassScope = (level == 0) ||
                     (!stack.isEmpty() && stack.get(stack.size() - 1).kind() == BlockKind.CLASS_OR_INTERFACE &&
                      stack.get(stack.size() - 1).level() + 1 == level);
-                String constJava = inClassScope ? tryEmitMagmaConstAssign(content) : null;
+                String constJava = inClassScope ? tryEmitLavaConstAssign(content) : null;
                 if (constJava != null) {
                     out.append(constJava);
                 } else {
-                    out.append(translateTokensMagmaToJava(content));
+                    out.append(translateTokensLavaToJava(content));
                     if (!content.endsWith(";") && !content.endsWith(",")) {
                         out.append(';');
                     }
@@ -1748,7 +1748,7 @@ public class Magma {
         }
 
         if (prevLineOpenedBlock) {
-            throw new MagmaException("dangling block header at end of file (expected indented block)", prevBlockLine, 1);
+            throw new LavaException("dangling block header at end of file (expected indented block)", prevBlockLine, 1);
         }
 
         while (!stack.isEmpty()) {
@@ -1760,7 +1760,7 @@ public class Magma {
     }
 
     /* -------------------------------------------------------------------------
-     * Java -> Magma Transpiler & Canonical Magma Formatter
+     * Java -> Lava Transpiler & Canonical Lava Formatter
      * ------------------------------------------------------------------------- */
 
     private static boolean isValidIndentUnit(String unit) {
@@ -1773,8 +1773,8 @@ public class Magma {
         return true;
     }
 
-    /* Convert a Java parameter `final String[] args` or `int a` into Magma `const args: str[]` or `a: i32` */
-    private static String emitMagmaParam(String rawParam) {
+    /* Convert a Java parameter `final String[] args` or `int a` into Lava `const args: str[]` or `a: i32` */
+    private static String emitLavaParam(String rawParam) {
         String p = rawParam.trim();
         if (p.isEmpty()) return "";
 
@@ -1795,17 +1795,17 @@ public class Magma {
         int idStart = idEnd;
         while (idStart > 0 && isIdentCont(p.charAt(idStart - 1))) idStart--;
         if (idStart == 0 || idStart == idEnd) {
-            return translateTokensJavaToMagma(rawParam.trim());
+            return translateTokensJavaToLava(rawParam.trim());
         }
 
         String name = p.substring(idStart, idEnd);
         String typePart = p.substring(0, idStart).trim() + trailingBrackets;
 
-        return (isFinal ? "const " : "") + name + ": " + translateTypeJavaToMagma(typePart);
+        return (isFinal ? "const " : "") + name + ": " + translateTypeJavaToLava(typePart);
     }
 
     /* Convert a Java method/constructor header into `[mods] def name(params) [-> ret_type]:` */
-    private static String tryEmitJavaFuncToMagma(String s, boolean isBlock) {
+    private static String tryEmitJavaFuncToLava(String s, boolean isBlock) {
         if (startsWithKw(s, "if") >= 0 || startsWithKw(s, "for") >= 0 ||
             startsWithKw(s, "while") >= 0 || startsWithKw(s, "switch") >= 0 ||
             startsWithKw(s, "catch") >= 0 || startsWithKw(s, "synchronized") >= 0 ||
@@ -1887,23 +1887,23 @@ public class Magma {
             if (item.isEmpty()) continue;
             if (!first) out.append(", ");
             first = false;
-            out.append(emitMagmaParam(item));
+            out.append(emitLavaParam(item));
         }
         out.append(')');
 
         String afterRp = s.substring(rparen + 1).trim();
         if (!retType.isEmpty() && !retType.equals("void")) {
-            out.append(" -> ").append(translateTypeJavaToMagma(retType));
+            out.append(" -> ").append(translateTypeJavaToLava(retType));
         }
         if (!afterRp.isEmpty()) {
-            out.append(' ').append(translateTokensJavaToMagma(afterRp));
+            out.append(' ').append(translateTokensJavaToLava(afterRp));
         }
         if (isBlock) out.append(':');
         return out.toString();
     }
 
-    /* Convert a Java variable/field declaration `int x = 10` or `double[] r = new double[3]` to Magma `x: i32 = 10` or `r: f64[3]` */
-    private static String tryEmitJavaVarDeclToMagma(String s, boolean inClassScope) {
+    /* Convert a Java variable/field declaration `int x = 10` or `double[] r = new double[3]` to Lava `x: i32 = 10` or `r: f64[3]` */
+    private static String tryEmitJavaVarDeclToLava(String s, boolean inClassScope) {
         if (startsWithKw(s, "return") >= 0 || startsWithKw(s, "break") >= 0 ||
             startsWithKw(s, "continue") >= 0 || startsWithKw(s, "throw") >= 0 ||
             startsWithKw(s, "case") >= 0 || startsWithKw(s, "package") >= 0 ||
@@ -1988,7 +1988,7 @@ public class Magma {
         if (inClassScope && isPublicStaticFinal && rhs != null && isAllCapsIdent(varName) &&
             (typePart.equals("int") || typePart.equals("long") || typePart.equals("double") ||
              typePart.equals("boolean") || typePart.equals("String") || typePart.equals("char"))) {
-            return varName + " = " + translateTokensJavaToMagma(rhs);
+            return varName + " = " + translateTokensJavaToLava(rhs);
         }
 
         /* Check if `T[] arr = new T[N]` (sized array allocation) should fold to `arr: T[N]` */
@@ -2010,30 +2010,30 @@ public class Magma {
                     if (cb >= dimsPart.length()) { dimCount = -1; break; }
                     String dExpr = dimsPart.substring(idx + 1, cb).trim();
                     if (dExpr.isEmpty()) { dimCount = -1; break; }
-                    magDims.append('[').append(translateTokensJavaToMagma(dExpr)).append(']');
+                    magDims.append('[').append(translateTokensJavaToLava(dExpr)).append(']');
                     dimCount++;
                     idx = cb + 1;
                 }
                 if (dimCount == bracketCount && idx == dimsPart.length()) {
                     String prefix = mods.length() > 0 ? mods + " " : "";
-                    return prefix + varName + ": " + translateTypeJavaToMagma(elemJavaType) + magDims;
+                    return prefix + varName + ": " + translateTypeJavaToLava(elemJavaType) + magDims;
                 }
             }
         }
 
         StringBuilder out = new StringBuilder();
         if (mods.length() > 0) out.append(mods).append(' ');
-        out.append(varName).append(": ").append(translateTypeJavaToMagma(typePart));
+        out.append(varName).append(": ").append(translateTypeJavaToLava(typePart));
         if (rhs != null) {
-            out.append(" = ").append(translateTokensJavaToMagma(rhs));
+            out.append(" = ").append(translateTokensJavaToLava(rhs));
         }
         return out.toString();
     }
 
-    private record ForLoopInfo(String magmaClause, String loopVar) {}
+    private record ForLoopInfo(String lavaClause, String loopVar) {}
 
     /* Convert Java 3-clause `for (int i = start; i < stop; i++)` into `i in range(...)` */
-    private static ForLoopInfo tryEmitJavaForRangeToMagma(String initS, String condS, String stepS) {
+    private static ForLoopInfo tryEmitJavaForRangeToLava(String initS, String condS, String stepS) {
         String init = initS.trim();
         String cond = condS.trim();
         String step = stepS.trim();
@@ -2085,17 +2085,17 @@ public class Magma {
 
         StringBuilder sb = new StringBuilder(vname);
         if (!typeStr.equals("int")) {
-            sb.append(": ").append(translateTypeJavaToMagma(typeStr));
+            sb.append(": ").append(translateTypeJavaToLava(typeStr));
         }
         sb.append(" in range(");
         if (startS.equals("0") && customStep == null) {
-            sb.append(translateTokensJavaToMagma(stopS));
+            sb.append(translateTokensJavaToLava(stopS));
         } else {
-            sb.append(translateTokensJavaToMagma(startS)).append(", ").append(translateTokensJavaToMagma(stopS));
+            sb.append(translateTokensJavaToLava(startS)).append(", ").append(translateTokensJavaToLava(stopS));
             if (customStep != null) {
                 sb.append(", ");
                 if (negStep && !customStep.startsWith("-")) sb.append('-');
-                sb.append(translateTokensJavaToMagma(customStep));
+                sb.append(translateTokensJavaToLava(customStep));
             }
         }
         sb.append(')');
@@ -2103,7 +2103,7 @@ public class Magma {
     }
 
     /* Convert Java enhanced `for (var x : iter)` or `for (T x : iter)` into `x in iter` */
-    private static ForLoopInfo tryEmitJavaForInToMagma(String condRaw) {
+    private static ForLoopInfo tryEmitJavaForInToLava(String condRaw) {
         String cond = condRaw.trim();
         int colonIdx = -1;
         int depth = 0;
@@ -2140,9 +2140,9 @@ public class Magma {
 
         StringBuilder sb = new StringBuilder(vname);
         if (!typeStr.equals("var")) {
-            sb.append(": ").append(translateTypeJavaToMagma(typeStr));
+            sb.append(": ").append(translateTypeJavaToLava(typeStr));
         }
-        sb.append(" in ").append(translateTokensJavaToMagma(rhs));
+        sb.append(" in ").append(translateTokensJavaToLava(rhs));
         return new ForLoopInfo(sb.toString(), vname);
     }
 
@@ -2161,8 +2161,8 @@ public class Magma {
         return src.substring(ls, le).trim();
     }
 
-    /* Fold a Java array/collection declaration + initialization loop back into a Magma comprehension */
-    private static String tryEmitJavaComprehensionToMagma(String declLine, String src, int[] ioCursor) {
+    /* Fold a Java array/collection declaration + initialization loop back into a Lava comprehension */
+    private static String tryEmitJavaComprehensionToLava(String declLine, String src, int[] ioCursor) {
         int eqIdx = declLine.indexOf('=');
         if (eqIdx <= 0) return null;
 
@@ -2189,7 +2189,7 @@ public class Magma {
 
         if (!isJavaArray && !isJavaList && !isJavaSet && !isJavaMap) return null;
 
-        String magmaDeclType;
+        String lavaDeclType;
         if (isJavaArray) {
             String elemType = javaType.substring(0, javaType.length() - 2).trim();
             String afterNew = rhs.substring(4).trim();
@@ -2198,9 +2198,9 @@ public class Magma {
             int cb = findMatchingDelim(dimPart, 0, '[', ']');
             if (cb != dimPart.length() - 1) return null;
             String dimExpr = dimPart.substring(1, cb).trim();
-            magmaDeclType = translateTypeJavaToMagma(elemType) + "[" + translateTokensJavaToMagma(dimExpr) + "]";
+            lavaDeclType = translateTypeJavaToLava(elemType) + "[" + translateTokensJavaToLava(dimExpr) + "]";
         } else {
-            magmaDeclType = translateTypeJavaToMagma(javaType);
+            lavaDeclType = translateTypeJavaToLava(javaType);
         }
 
         int[] scan = new int[]{ioCursor[0]};
@@ -2216,13 +2216,13 @@ public class Magma {
         int semi1 = forCond.indexOf(';');
         int semi2 = (semi1 >= 0) ? forCond.indexOf(';', semi1 + 1) : -1;
         if (semi1 >= 0 && semi2 > semi1) {
-            forInfo = tryEmitJavaForRangeToMagma(
+            forInfo = tryEmitJavaForRangeToLava(
                 forCond.substring(0, semi1),
                 forCond.substring(semi1 + 1, semi2),
                 forCond.substring(semi2 + 1)
             );
         } else {
-            forInfo = tryEmitJavaForInToMagma(forCond);
+            forInfo = tryEmitJavaForInToLava(forCond);
         }
         if (forInfo == null) return null;
 
@@ -2304,16 +2304,16 @@ public class Magma {
         if (!matched || elemStr == null || elemStr.isEmpty()) return null;
 
         StringBuilder out = new StringBuilder();
-        out.append(varName).append(": ").append(magmaDeclType).append(" = ");
+        out.append(varName).append(": ").append(lavaDeclType).append(" = ");
         out.append(kind == CompKind.LIST ? '[' : '{');
         if (kind == CompKind.DICT) {
-            out.append(translateTokensJavaToMagma(keyStr)).append(": ");
+            out.append(translateTokensJavaToLava(keyStr)).append(": ");
         }
-        out.append(translateTokensJavaToMagma(elemStr))
+        out.append(translateTokensJavaToLava(elemStr))
            .append(" for ")
-           .append(forInfo.magmaClause());
+           .append(forInfo.lavaClause());
         if (ifCond != null) {
-            out.append(" if ").append(translateTokensJavaToMagma(ifCond));
+            out.append(" if ").append(translateTokensJavaToLava(ifCond));
         }
         out.append(kind == CompKind.LIST ? ']' : '}');
 
@@ -2321,7 +2321,7 @@ public class Magma {
         return out.toString();
     }
 
-    private static String transformClassHeaderJavaToMagma(String header) {
+    private static String transformClassHeaderJavaToLava(String header) {
         String h = header.trim();
         addTag(h);
 
@@ -2337,11 +2337,11 @@ public class Magma {
                 for (int i = 0; i < rparams.size(); i++) {
                     if (rparams.get(i).isEmpty()) continue;
                     if (pstr.length() > 0) pstr.append(", ");
-                    pstr.append(emitMagmaParam(rparams.get(i)));
+                    pstr.append(emitLavaParam(rparams.get(i)));
                 }
                 String after = h.substring(rp + 1).trim();
-                return translateTokensJavaToMagma(before) + "(" + pstr + ")" +
-                       (after.isEmpty() ? "" : " " + translateTokensJavaToMagma(after));
+                return translateTokensJavaToLava(before) + "(" + pstr + ")" +
+                       (after.isEmpty() ? "" : " " + translateTokensJavaToLava(after));
             }
         }
 
@@ -2354,20 +2354,20 @@ public class Magma {
             if (implIdx > 0) {
                 String base = afterExt.substring(0, implIdx).trim();
                 String implPart = afterExt.substring(implIdx).trim();
-                return translateTokensJavaToMagma(before) + "(" + translateTypeJavaToMagma(base) + ") " +
-                       translateTokensJavaToMagma(implPart);
+                return translateTokensJavaToLava(before) + "(" + translateTypeJavaToLava(base) + ") " +
+                       translateTokensJavaToLava(implPart);
             } else {
-                return translateTokensJavaToMagma(before) + "(" + translateTypeJavaToMagma(afterExt) + ")";
+                return translateTokensJavaToLava(before) + "(" + translateTypeJavaToLava(afterExt) + ")";
             }
         }
 
-        return translateTokensJavaToMagma(h);
+        return translateTokensJavaToLava(h);
     }
 
-    public static String magmaFromJavaIndent(String src, String indentUnit) throws MagmaException {
+    public static String lavaFromJavaIndent(String src, String indentUnit) throws LavaException {
         String unit = (indentUnit != null) ? indentUnit : "    ";
         if (!isValidIndentUnit(unit)) {
-            throw new MagmaException("invalid indent unit", 1, 1);
+            throw new LavaException("invalid indent unit", 1, 1);
         }
 
         resetSymtab();
@@ -2446,7 +2446,7 @@ public class Magma {
             if ((kwAfter = startsWithKw(line, "case")) >= 0 || line.equals("default:")) {
                 inCaseBody = false;
                 appendIndent(out, unit, depth);
-                out.append(translateTokensJavaToMagma(line));
+                out.append(translateTokensJavaToLava(line));
                 if (inlineComment != null) out.append(" #").append(inlineComment);
                 out.append('\n');
                 inCaseBody = true;
@@ -2460,7 +2460,7 @@ public class Magma {
             if (line.endsWith("{}") && (line.startsWith("record ") || line.contains(" record "))) {
                 String rhead = line.substring(0, line.length() - 2).trim();
                 appendIndent(out, unit, effDepth);
-                out.append(transformClassHeaderJavaToMagma(rhead));
+                out.append(transformClassHeaderJavaToLava(rhead));
                 if (inlineComment != null) out.append(" #").append(inlineComment);
                 out.append('\n');
                 continue;
@@ -2477,7 +2477,7 @@ public class Magma {
                     if (cond.length() >= 2 && cond.charAt(0) == '(' && cond.charAt(cond.length() - 1) == ')') {
                         cond = cond.substring(1, cond.length() - 1).trim();
                     }
-                    out.append("elif ").append(translateTokensJavaToMagma(cond)).append(':');
+                    out.append("elif ").append(translateTokensJavaToLava(cond)).append(':');
                 } else if (header.equals("else")) {
                     out.append("else:");
                 } else if ((kwAfter = startsWithKw(header, "catch")) >= 0) {
@@ -2485,7 +2485,7 @@ public class Magma {
                     if (cexpr.length() >= 2 && cexpr.charAt(0) == '(' && cexpr.charAt(cexpr.length() - 1) == ')') {
                         cexpr = cexpr.substring(1, cexpr.length() - 1).trim();
                     }
-                    out.append("catch (").append(emitMagmaParam(cexpr)).append("):");
+                    out.append("catch (").append(emitLavaParam(cexpr)).append("):");
                 } else if (header.equals("finally")) {
                     out.append("finally:");
                 } else if ((kwAfter = startsWithKw(header, "if")) >= 0) {
@@ -2493,13 +2493,13 @@ public class Magma {
                     if (cond.length() >= 2 && cond.charAt(0) == '(' && cond.charAt(cond.length() - 1) == ')') {
                         cond = cond.substring(1, cond.length() - 1).trim();
                     }
-                    out.append("if ").append(translateTokensJavaToMagma(cond)).append(':');
+                    out.append("if ").append(translateTokensJavaToLava(cond)).append(':');
                 } else if ((kwAfter = startsWithKw(header, "while")) >= 0) {
                     String cond = header.substring(kwAfter).trim();
                     if (cond.length() >= 2 && cond.charAt(0) == '(' && cond.charAt(cond.length() - 1) == ')') {
                         cond = cond.substring(1, cond.length() - 1).trim();
                     }
-                    out.append("while ").append(translateTokensJavaToMagma(cond)).append(':');
+                    out.append("while ").append(translateTokensJavaToLava(cond)).append(':');
                 } else if ((kwAfter = startsWithKw(header, "for")) >= 0) {
                     String cond = header.substring(kwAfter).trim();
                     if (cond.length() >= 2 && cond.charAt(0) == '(' && cond.charAt(cond.length() - 1) == ')') {
@@ -2512,20 +2512,20 @@ public class Magma {
                         String c1 = cond.substring(0, semi1).trim();
                         String c2 = cond.substring(semi1 + 1, semi2).trim();
                         String c3 = cond.substring(semi2 + 1).trim();
-                        ForLoopInfo rangeInfo = tryEmitJavaForRangeToMagma(c1, c2, c3);
+                        ForLoopInfo rangeInfo = tryEmitJavaForRangeToLava(c1, c2, c3);
                         if (rangeInfo != null) {
-                            out.append(rangeInfo.magmaClause());
+                            out.append(rangeInfo.lavaClause());
                         } else {
-                            String vdecl = tryEmitJavaVarDeclToMagma(c1, false);
-                            out.append(vdecl != null ? vdecl : translateTokensJavaToMagma(c1))
+                            String vdecl = tryEmitJavaVarDeclToLava(c1, false);
+                            out.append(vdecl != null ? vdecl : translateTokensJavaToLava(c1))
                                .append("; ")
-                               .append(translateTokensJavaToMagma(c2))
+                               .append(translateTokensJavaToLava(c2))
                                .append("; ")
-                               .append(translateTokensJavaToMagma(c3));
+                               .append(translateTokensJavaToLava(c3));
                         }
                     } else {
-                        ForLoopInfo inInfo = tryEmitJavaForInToMagma(cond);
-                        out.append(inInfo != null ? inInfo.magmaClause() : translateTokensJavaToMagma(cond));
+                        ForLoopInfo inInfo = tryEmitJavaForInToLava(cond);
+                        out.append(inInfo != null ? inInfo.lavaClause() : translateTokensJavaToLava(cond));
                     }
                     out.append(':');
                 } else if ((kwAfter = startsWithKw(header, "switch")) >= 0) {
@@ -2533,23 +2533,23 @@ public class Magma {
                     if (cond.length() >= 2 && cond.charAt(0) == '(' && cond.charAt(cond.length() - 1) == ')') {
                         cond = cond.substring(1, cond.length() - 1).trim();
                     }
-                    out.append("switch ").append(translateTokensJavaToMagma(cond)).append(':');
+                    out.append("switch ").append(translateTokensJavaToLava(cond)).append(':');
                     pushedKind = BlockKind.SWITCH;
                 } else if (header.startsWith("enum ") || header.contains(" enum ")) {
                     addTag(header);
-                    out.append(translateTokensJavaToMagma(header)).append(':');
+                    out.append(translateTokensJavaToLava(header)).append(':');
                     pushedKind = BlockKind.ENUM;
                 } else if (header.startsWith("class ") || header.contains(" class ") ||
                            header.startsWith("interface ") || header.contains(" interface ") ||
                            header.startsWith("record ") || header.contains(" record ")) {
-                    out.append(transformClassHeaderJavaToMagma(header)).append(':');
+                    out.append(transformClassHeaderJavaToLava(header)).append(':');
                     pushedKind = BlockKind.CLASS_OR_INTERFACE;
                 } else {
-                    String fnMagma = tryEmitJavaFuncToMagma(header, true);
-                    if (fnMagma != null) {
-                        out.append(fnMagma);
+                    String fnLava = tryEmitJavaFuncToLava(header, true);
+                    if (fnLava != null) {
+                        out.append(fnLava);
                     } else {
-                        out.append(translateTokensJavaToMagma(header)).append(':');
+                        out.append(translateTokensJavaToLava(header)).append(':');
                     }
                 }
 
@@ -2573,19 +2573,19 @@ public class Magma {
             boolean inClassScope = (effDepth == 0) ||
                 (!blockStack.isEmpty() && blockStack.get(blockStack.size() - 1).kind() == BlockKind.CLASS_OR_INTERFACE);
 
-            String fnProto = tryEmitJavaFuncToMagma(line, false);
+            String fnProto = tryEmitJavaFuncToLava(line, false);
             if (fnProto != null) {
                 out.append(fnProto);
             } else {
-                String compMagma = (inlineComment == null) ? tryEmitJavaComprehensionToMagma(line, src, cursor) : null;
-                if (compMagma != null) {
-                    out.append(compMagma);
+                String compLava = (inlineComment == null) ? tryEmitJavaComprehensionToLava(line, src, cursor) : null;
+                if (compLava != null) {
+                    out.append(compLava);
                 } else {
-                    String varMagma = tryEmitJavaVarDeclToMagma(line, inClassScope);
-                    if (varMagma != null) {
-                        out.append(varMagma);
+                    String varLava = tryEmitJavaVarDeclToLava(line, inClassScope);
+                    if (varLava != null) {
+                        out.append(varLava);
                     } else {
-                        out.append(translateTokensJavaToMagma(line));
+                        out.append(translateTokensJavaToLava(line));
                     }
                 }
             }
@@ -2597,9 +2597,9 @@ public class Magma {
         return out.toString();
     }
 
-    public static String magmaFormatIndent(String src, String indentUnit) throws MagmaException {
-        String javaCode = magmaToJava(src);
-        return magmaFromJavaIndent(javaCode, indentUnit);
+    public static String lavaFormatIndent(String src, String indentUnit) throws LavaException {
+        String javaCode = lavaToJava(src);
+        return lavaFromJavaIndent(javaCode, indentUnit);
     }
 
     /* -------------------------------------------------------------------------
@@ -2637,11 +2637,11 @@ public class Magma {
     private static int compileOrRunJava(String javaCode, String outputBin, boolean runMode) {
         Path tempDir = null;
         try {
-            tempDir = Files.createTempDirectory("magma_build_");
+            tempDir = Files.createTempDirectory("lava_build_");
             String mainClass = findPrimaryClassName(javaCode);
             if (mainClass == null) {
-                mainClass = "MagmaMain";
-                javaCode = "import java.util.*;\npublic class MagmaMain {\n" + javaCode + "\n}\n";
+                mainClass = "LavaMain";
+                javaCode = "import java.util.*;\npublic class LavaMain {\n" + javaCode + "\n}\n";
             }
 
             Path srcFile = tempDir.resolve(mainClass + ".java");
@@ -2698,7 +2698,7 @@ public class Magma {
             }
             return 0;
         } catch (Exception e) {
-            System.err.println("magma error: " + e.getMessage());
+            System.err.println("lava error: " + e.getMessage());
             return 1;
         } finally {
             if (tempDir != null) deleteDirRecursive(tempDir);
@@ -2710,7 +2710,7 @@ public class Magma {
      * ------------------------------------------------------------------------- */
 
     private static int runTests() {
-        String[] magmaCases = {
+        String[] lavaCases = {
             /* Case 0: Classes, constants, casts, range loops, logical operators */
             "import java.util.ArrayList\n" +
             "\n" +
@@ -2779,19 +2779,19 @@ public class Magma {
         String[] indents = {"  ", "    ", "\t"};
         int passed = 0;
 
-        for (int i = 0; i < magmaCases.length; i++) {
+        for (int i = 0; i < lavaCases.length; i++) {
             for (String indent : indents) {
                 try {
-                    String j1 = magmaToJava(magmaCases[i]);
-                    String mg = magmaFromJavaIndent(j1, indent);
-                    String j2 = magmaToJava(mg);
+                    String j1 = lavaToJava(lavaCases[i]);
+                    String lv = lavaFromJavaIndent(j1, indent);
+                    String j2 = lavaToJava(lv);
                     if (!j1.equals(j2)) {
                         System.err.printf("FAIL [case %d roundtrip mismatch]\n--- Expected Java ---\n%s--- Got Java ---\n%s",
                                           i, j1, j2);
                         return 1;
                     }
                     passed++;
-                } catch (MagmaException e) {
+                } catch (LavaException e) {
                     System.err.printf("FAIL [case %d]: %s (line %d)\n", i, e.getMessage(), e.line);
                     return 1;
                 }
@@ -2801,21 +2801,21 @@ public class Magma {
         /* Universal newlines test (\r\n and \r) */
         try {
             String crlfSrc = "def add(a: i32, b: i32) -> i32:\r\n    return a + b\r";
-            String jOut = magmaToJava(crlfSrc);
+            String jOut = lavaToJava(crlfSrc);
             String expected = "int add(int a, int b) {\n    return a + b;\n}\n";
             if (!jOut.equals(expected)) {
                 System.err.printf("FAIL [universal_newlines output]:\nGot:\n%sExpected:\n%s", jOut, expected);
                 return 1;
             }
             passed++;
-        } catch (MagmaException e) {
+        } catch (LavaException e) {
             System.err.println("FAIL [universal_newlines]: " + e.getMessage());
             return 1;
         }
 
         /* Exact comprehension Java codegen & bidirectional round-trip test */
         try {
-            String compMagma =
+            String compLava =
                 "def demo():\n" +
                 "    squares: i32[8] = [i * i for i in range(8)]\n" +
                 "    evens: bool[16] = {i for i in range(16) if i % 2 == 0}\n" +
@@ -2858,20 +2858,20 @@ public class Magma {
                 "        }\n" +
                 "    }\n" +
                 "}\n";
-            String jOut = magmaToJava(compMagma);
+            String jOut = lavaToJava(compLava);
             if (!jOut.equals(expectedJava)) {
                 System.err.printf("FAIL [comprehensions Java output]\n--- Expected ---\n%s--- Got ---\n%s",
                                   expectedJava, jOut);
                 return 1;
             }
-            String mgOut = magmaFromJavaIndent(jOut, "    ");
-            if (!mgOut.equals(compMagma)) {
-                System.err.printf("FAIL [comprehensions Magma roundtrip]\n--- Expected ---\n%s--- Got ---\n%s",
-                                  compMagma, mgOut);
+            String lvOut = lavaFromJavaIndent(jOut, "    ");
+            if (!lvOut.equals(compLava)) {
+                System.err.printf("FAIL [comprehensions Lava roundtrip]\n--- Expected ---\n%s--- Got ---\n%s",
+                                  compLava, lvOut);
                 return 1;
             }
             passed++;
-        } catch (MagmaException e) {
+        } catch (LavaException e) {
             System.err.printf("FAIL [comprehensions]: %s (line %d)\n", e.getMessage(), e.line);
             return 1;
         }
@@ -2888,25 +2888,25 @@ public class Magma {
         };
         for (int i = 0; i < invalidCases.length; i++) {
             try {
-                magmaToJava(invalidCases[i]);
+                lavaToJava(invalidCases[i]);
                 System.err.printf("FAIL [invalid %d accepted]: %s\n", i, invalidCases[i]);
                 return 1;
-            } catch (MagmaException expected) {
+            } catch (LavaException expected) {
                 passed++;
             }
         }
 
-        System.out.printf("Java Magma: all %d conformance tests passed.%n", passed);
+        System.out.printf("Java Lava: all %d conformance tests passed.%n", passed);
         return 0;
     }
 
     private static int runBench(String path) {
-        String mg4Sample;
+        String lv4Sample;
         if (path != null) {
             try {
-                mg4Sample = Files.readString(Path.of(path), StandardCharsets.UTF_8);
+                lv4Sample = Files.readString(Path.of(path), StandardCharsets.UTF_8);
             } catch (IOException e) {
-                System.err.println("magma error: cannot read '" + path + "'");
+                System.err.println("lava error: cannot read '" + path + "'");
                 return 1;
             }
         } else {
@@ -2932,65 +2932,65 @@ public class Magma {
                     i, i
                 ));
             }
-            mg4Sample = b.toString();
+            lv4Sample = b.toString();
         }
 
         try {
-            String javaSample = magmaToJava(mg4Sample);
-            String mgTabSample = magmaFromJavaIndent(javaSample, "\t");
+            String javaSample = lavaToJava(lv4Sample);
+            String lvTabSample = lavaFromJavaIndent(javaSample, "\t");
 
             /* JIT warm-up */
             for (int i = 0; i < 200; i++) {
-                magmaToJava(mg4Sample);
-                magmaToJava(mgTabSample);
-                magmaFromJavaIndent(javaSample, "    ");
+                lavaToJava(lv4Sample);
+                lavaToJava(lvTabSample);
+                lavaFromJavaIndent(javaSample, "    ");
             }
 
             int iters = 1000;
             long t0 = System.nanoTime();
             for (int i = 0; i < iters; i++) {
-                magmaToJava(mg4Sample);
+                lavaToJava(lv4Sample);
             }
-            double dtMg4 = (System.nanoTime() - t0) * 1e-9;
+            double dtLv4 = (System.nanoTime() - t0) * 1e-9;
 
             t0 = System.nanoTime();
             for (int i = 0; i < iters; i++) {
-                magmaToJava(mgTabSample);
+                lavaToJava(lvTabSample);
             }
             double dtTab = (System.nanoTime() - t0) * 1e-9;
 
             t0 = System.nanoTime();
             for (int i = 0; i < iters; i++) {
-                magmaFromJavaIndent(javaSample, "    ");
+                lavaFromJavaIndent(javaSample, "    ");
             }
             double dtFromJava = (System.nanoTime() - t0) * 1e-9;
 
             int javaBytes = javaSample.getBytes(StandardCharsets.UTF_8).length;
-            int mg4Bytes = mg4Sample.getBytes(StandardCharsets.UTF_8).length;
-            int mgTabBytes = mgTabSample.getBytes(StandardCharsets.UTF_8).length;
+            int lv4Bytes = lv4Sample.getBytes(StandardCharsets.UTF_8).length;
+            int lvTabBytes = lvTabSample.getBytes(StandardCharsets.UTF_8).length;
 
-            double mibMg4 = ((double) mg4Bytes * iters / (1024.0 * 1024.0)) / dtMg4;
-            double mibTab = ((double) mgTabBytes * iters / (1024.0 * 1024.0)) / dtTab;
+            double mibLv4 = ((double) lv4Bytes * iters / (1024.0 * 1024.0)) / dtLv4;
+            double mibTab = ((double) lvTabBytes * iters / (1024.0 * 1024.0)) / dtTab;
             double mibFromJava = ((double) javaBytes * iters / (1024.0 * 1024.0)) / dtFromJava;
 
-            System.out.printf("Magma Benchmark (250 methods, %d iterations):%n", iters);
+            System.out.printf("Lava Benchmark (250 methods, %d iterations):%n", iters);
             System.out.printf("  Java source size       : %d bytes (%.1f KiB)%n",
                               javaBytes, javaBytes / 1024.0);
-            System.out.printf("  Magma 4-space size     : %d bytes (%.1f KiB, %+.1f%% vs Java)%n",
-                              mg4Bytes, mg4Bytes / 1024.0,
-                              100.0 * (mg4Bytes - javaBytes) / javaBytes);
-            System.out.printf("  Magma tab (\\t) size    : %d bytes (%.1f KiB, %+.1f%% vs Java)%n",
-                              mgTabBytes, mgTabBytes / 1024.0,
-                              100.0 * (mgTabBytes - javaBytes) / javaBytes);
-            System.out.printf("  Magma (4-sp) -> Java   : %.0f files/s (%.1f MiB/s)%n",
-                              iters / dtMg4, mibMg4);
-            System.out.printf("  Magma (tab)  -> Java   : %.0f files/s (%.1f MiB/s)%n",
+            System.out.printf("  Lava 4-space size      : %d bytes (%.1f KiB, %+.1f%% vs Java)%n",
+                              lv4Bytes, lv4Bytes / 1024.0,
+                              100.0 * (lv4Bytes - javaBytes) / javaBytes);
+            System.out.printf("  Lava tab (\\t) size     : %d bytes (%.1f KiB, %+.1f%% vs Java)%n",
+                              lvTabBytes, lvTabBytes / 1024.0,
+                              100.0 * (lvTabBytes - javaBytes) / javaBytes);
+            System.out.printf("  Lava (4-sp) -> Java    : %.0f files/s (%.1f MiB/s)%n",
+                              iters / dtLv4, mibLv4);
+            System.out.printf("  Lava (tab)  -> Java    : %.0f files/s (%.1f MiB/s)%n",
                               iters / dtTab, mibTab);
-            System.out.printf("  Java -> Magma (4-sp)   : %.0f files/s (%.1f MiB/s)%n",
+            System.out.printf("  Java -> Lava (4-sp)    : %.0f files/s (%.1f MiB/s)%n",
                               iters / dtFromJava, mibFromJava);
             return 0;
-        } catch (MagmaException e) {
-            System.err.printf("magma bench error: %s (line %d)%n", e.getMessage(), e.line);
+        } catch (LavaException e) {
+            System.err.printf("lava bench error: %s (line %d)%n", e.getMessage(), e.line);
             return 1;
         }
     }
@@ -2998,14 +2998,14 @@ public class Magma {
     private static void printUsage() {
         System.err.println(
             "Usage:\n" +
-            "  magma <file.magma>                        Transpile Magma to Java on stdout\n" +
-            "  magma --magma [--indent <N|tab>] <f>      Format/canonicalize Magma\n" +
-            "  magma --from-java [--indent <N|tab>] <f>  Convert Java source to Magma\n" +
-            "  magma --compile <file.magma> [-o <bin>]   Transpile and compile via javac\n" +
-            "  magma --run <file.magma>                  Transpile, compile, and execute immediately\n" +
-            "  magma --check <file.magma>                Validate Magma syntax only\n" +
-            "  magma --test                              Run built-in conformance test suite\n" +
-            "  magma --bench [file.magma]                Run transpilation throughput benchmark"
+            "  lava <file.lava>                         Transpile Lava to Java on stdout\n" +
+            "  lava --lava [--indent <N|tab>] <f>       Format/canonicalize Lava\n" +
+            "  lava --from-java [--indent <N|tab>] <f>  Convert Java source to Lava\n" +
+            "  lava --compile <file.lava> [-o <bin>]    Transpile and compile via javac\n" +
+            "  lava --run <file.lava>                   Transpile, compile, and execute immediately\n" +
+            "  lava --check <file.lava>                 Validate Lava syntax only\n" +
+            "  lava --test                              Run built-in conformance test suite\n" +
+            "  lava --bench [file.lava]                 Run transpilation throughput benchmark"
         );
     }
 
@@ -3015,7 +3015,7 @@ public class Magma {
             System.exit(1);
         }
 
-        boolean modeMagma = false;
+        boolean modeLava = false;
         boolean modeFromJava = false;
         boolean modeCheck = false;
         boolean modeCompile = false;
@@ -3031,8 +3031,8 @@ public class Magma {
             } else if (arg.equals("--bench")) {
                 String bpath = (i + 1 < args.length && !args[i + 1].startsWith("-")) ? args[i + 1] : null;
                 System.exit(runBench(bpath));
-            } else if (arg.equals("--magma")) {
-                modeMagma = true;
+            } else if (arg.equals("--lava")) {
+                modeLava = true;
             } else if (arg.equals("--from-java")) {
                 modeFromJava = true;
             } else if (arg.equals("--check")) {
@@ -3053,7 +3053,7 @@ public class Magma {
                         if (n <= 0 || n > 63) throw new NumberFormatException();
                         indentOpt = " ".repeat(n);
                     } catch (NumberFormatException e) {
-                        System.err.println("magma error: --indent must be 1..63 or 'tab'");
+                        System.err.println("lava error: --indent must be 1..63 or 'tab'");
                         System.exit(1);
                     }
                 }
@@ -3063,13 +3063,13 @@ public class Magma {
             } else if (!arg.startsWith("-")) {
                 inputPath = arg;
             } else {
-                System.err.println("magma error: unknown option '" + arg + "'");
+                System.err.println("lava error: unknown option '" + arg + "'");
                 System.exit(1);
             }
         }
 
         if (inputPath == null) {
-            System.err.println("magma error: missing input file");
+            System.err.println("lava error: missing input file");
             System.exit(1);
         }
 
@@ -3077,22 +3077,22 @@ public class Magma {
         try {
             src = Files.readString(Path.of(inputPath), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            System.err.println("magma error: cannot read '" + inputPath + "'");
+            System.err.println("lava error: cannot read '" + inputPath + "'");
             System.exit(1);
             return;
         }
 
         try {
             if (modeFromJava) {
-                System.out.print(magmaFromJavaIndent(src, indentOpt));
+                System.out.print(lavaFromJavaIndent(src, indentOpt));
                 return;
             }
-            if (modeMagma) {
-                System.out.print(magmaFormatIndent(src, indentOpt));
+            if (modeLava) {
+                System.out.print(lavaFormatIndent(src, indentOpt));
                 return;
             }
 
-            String javaCode = magmaToJava(src);
+            String javaCode = lavaToJava(src);
             if (modeCheck) {
                 return;
             }
@@ -3100,8 +3100,8 @@ public class Magma {
                 System.exit(compileOrRunJava(javaCode, outputBin, modeRun));
             }
             System.out.print(javaCode);
-        } catch (MagmaException e) {
-            System.err.printf("magma error:%d:%d: %s%n", e.line, e.col, e.getMessage());
+        } catch (LavaException e) {
+            System.err.printf("lava error:%d:%d: %s%n", e.line, e.col, e.getMessage());
             System.exit(1);
         }
     }

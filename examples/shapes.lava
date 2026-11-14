@@ -1,4 +1,4 @@
-# Geometry & Shapes in Magma (4-space indentation)
+# Geometry & Shapes in Lava (4-space indentation)
 
 public class Shapes:
     PI = 3.141592653589793

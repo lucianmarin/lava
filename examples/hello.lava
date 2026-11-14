@@ -1,4 +1,4 @@
-# Hello World in Magma (4-space indentation)
+# Hello World in Lava (4-space indentation)
 
 public class Hello:
     static def factorial(n: i32) -> i64:
@@ -8,6 +8,6 @@ public class Hello:
         return result
 
     public static def main(args: str[]):
-        println("Hello from Magma (Pythonic Java)!")
+        println("Hello from Lava (Pythonic Java)!")
         for n in range(1, 7):
             printf("  %d! = %d\n", n, factorial(n))

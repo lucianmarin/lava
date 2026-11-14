@@ -1,4 +1,4 @@
-# List, Set, and Dict Comprehensions in Magma (Java Arrays & Collections)
+# List, Set, and Dict Comprehensions in Lava (Java Arrays & Collections)
 
 import java.util.ArrayList
 import java.util.TreeSet
