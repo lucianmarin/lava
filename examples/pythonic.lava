@@ -1,0 +1,47 @@
+# Pythonic ergonomics in Lava: lambda, enumerate(), zip(), reversed(), f-strings,
+# ternary, membership (`in` / `not in`), `//`, `**`, chained comparisons, and multi-line syntax
+
+from java.util import ArrayList, HashMap, HashSet, function.IntUnaryOperator
+
+public class Pythonic:
+    public static def main(args: str[]):
+        banner: str = """=== Pythonic Lava ===
+lambda, enumerate, zip, reversed"""
+
+        # Multi-line nested comprehension
+        nums: list[i32] = [
+            x * 10 + y
+            for x in range(1, 4)
+            for y in range(2)
+            if x + y > 1
+        ]
+
+        # Inline lambda + negative indexing + ternary
+        inc: IntUnaryOperator = lambda v: v + 1
+        tag: str = "big" if nums[-1] > 20 else "small"
+
+        # Chained comparisons, `not` precedence, `is not`, `//`, `**`
+        ok: bool = 0 < nums.get(0) < 50 and not 1 == 2 and tag is not nil
+        fdiv: i32 = -7 // 2
+        power: f64 = 2 ** 3
+
+        # Set/dict membership (`in` / `not in`) + `del`
+        seen: unordered_set[i32] = {n for n in nums}
+        weights: unordered_map[i32, i32] = {n: inc.applyAsInt(n) for n in nums}
+        del weights[nums.get(0)]
+        has_20: bool = 20 in seen and 99 not in seen
+
+        println(banner)
+        println(f"tag={tag} ok={ok} has_20={has_20} -7//2={fdiv} 2**3={power:.0f} mapLen={weights.size()}")
+
+        # enumerate(), zip(), and reversed()
+        for idx, val in enumerate(nums):
+            println(f"  enum[{idx}] = {val}")
+
+        labels: str[5] = {"a", "b", "c", "d", "e"}
+        for label, val in zip(labels, nums):
+            println(f"  zip({label}, {val})")
+
+        println("  reversed:")
+        for r in reversed(nums):
+            println(f"    {r}")

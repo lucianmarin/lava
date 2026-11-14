@@ -401,13 +401,407 @@ public class Lava {
         }
     }
 
+    private static boolean lavaUsedInHelper = false;
+    private static boolean lavaUsedFloorDiv = false;
+    private static boolean lavaUsedLenGet = false;
+
+    private static int findTopLevelKwLava(String s, String kw) {
+        int len = s.length();
+        int kl = kw.length();
+        if (len < kl) return -1;
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i + kl <= len; i++) {
+            char c = s.charAt(i);
+            if (quote != 0) {
+                if (c == '\\' && i + 1 < len) i++;
+                else if (c == quote) quote = 0;
+                continue;
+            }
+            if (c == '"' || c == '\'') { quote = c; continue; }
+            if (c == '(' || c == '[' || c == '{') depth++;
+            else if (c == ')' || c == ']' || c == '}') { if (depth > 0) depth--; }
+            else if (depth == 0 && s.startsWith(kw, i)) {
+                boolean leftOk = (i == 0 || !isIdentCont(s.charAt(i - 1)));
+                boolean rightOk = (i + kl == len || !isIdentCont(s.charAt(i + kl)));
+                if (leftOk && rightOk) return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int findTopLevelTokLava(String s, String tok) {
+        int len = s.length();
+        int tl = tok.length();
+        if (len < tl) return -1;
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i + tl <= len; i++) {
+            char c = s.charAt(i);
+            if (quote != 0) {
+                if (c == '\\' && i + 1 < len) i++;
+                else if (c == quote) quote = 0;
+                continue;
+            }
+            if (c == '"' || c == '\'') { quote = c; continue; }
+            if (c == '(' || c == '[' || c == '{') depth++;
+            else if (c == ')' || c == ']' || c == '}') { if (depth > 0) depth--; }
+            else if (depth == 0 && s.startsWith(tok, i)) return i;
+        }
+        return -1;
+    }
+
+    private static boolean hasTopLevelAssignOrSepLava(String s) {
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (quote != 0) {
+                if (c == '\\' && i + 1 < s.length()) i++;
+                else if (c == quote) quote = 0;
+                continue;
+            }
+            if (c == '"' || c == '\'') { quote = c; continue; }
+            if (c == '(' || c == '[' || c == '{') depth++;
+            else if (c == ')' || c == ']' || c == '}') { if (depth > 0) depth--; }
+            else if (depth == 0) {
+                if (c == ',' || c == ';') return true;
+                if (c == '=') {
+                    if ((i + 1 < s.length() && (s.charAt(i + 1) == '=' || s.charAt(i + 1) == '>')) ||
+                        (i > 0 && "=!<+-*/%&|^".indexOf(s.charAt(i - 1)) >= 0)) {
+                        continue;
+                    }
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static String[] trySplitTernaryLava(String s) {
+        int ifIdx = findTopLevelKwLava(s, "if");
+        if (ifIdx <= 0) return null;
+        String rest = s.substring(ifIdx + 2);
+        int elseRel = findTopLevelKwLava(rest, "else");
+        if (elseRel <= 0) return null;
+        String t = s.substring(0, ifIdx).trim();
+        String c = rest.substring(0, elseRel).trim();
+        String f = rest.substring(elseRel + 4).trim();
+        if (t.isEmpty() || c.isEmpty() || f.isEmpty()) return null;
+        return new String[]{t, c, f};
+    }
+
+    private static List<String> trySplitChainedCmpLava(String s, List<String> opsOut) {
+        List<String> operands = new ArrayList<>();
+        int depth = 0;
+        char quote = 0;
+        int last = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (quote != 0) {
+                if (c == '\\' && i + 1 < s.length()) i++;
+                else if (c == quote) quote = 0;
+                continue;
+            }
+            if (c == '"' || c == '\'') { quote = c; continue; }
+            if (c == '(' || c == '[' || c == '{') depth++;
+            else if (c == ')' || c == ']' || c == '}') { if (depth > 0) depth--; }
+            else if (depth == 0) {
+                if ((c == '<' || c == '>') &&
+                    (i + 1 >= s.length() || s.charAt(i + 1) != c) &&
+                    (i == 0 || s.charAt(i - 1) != c)) {
+                    if (c == '>' && i > 0 && (s.charAt(i - 1) == '-' || s.charAt(i - 1) == '=')) continue;
+                    String op = (i + 1 < s.length() && s.charAt(i + 1) == '=') ? (c + "=") : String.valueOf(c);
+                    operands.add(s.substring(last, i).trim());
+                    opsOut.add(op);
+                    i += op.length() - 1;
+                    last = i + 1;
+                } else if ((c == '=' || c == '!') && i + 1 < s.length() && s.charAt(i + 1) == '=') {
+                    operands.add(s.substring(last, i).trim());
+                    opsOut.add(s.substring(i, i + 2));
+                    i++;
+                    last = i + 1;
+                }
+            }
+        }
+        if (opsOut.size() < 2) return null;
+        operands.add(s.substring(last).trim());
+        for (String o : operands) if (o.isEmpty()) return null;
+        return operands;
+    }
+
+    private static boolean hasComparisonOpLava(String s) {
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (quote != 0) {
+                if (c == '\\' && i + 1 < s.length()) i++;
+                else if (c == quote) quote = 0;
+                continue;
+            }
+            if (c == '"' || c == '\'') { quote = c; continue; }
+            if (c == '(' || c == '[' || c == '{') depth++;
+            else if (c == ')' || c == ']' || c == '}') { if (depth > 0) depth--; }
+            else if (depth == 0) {
+                if (c == '<' || c == '>') {
+                    if (!(c == '>' && i > 0 && (s.charAt(i - 1) == '-' || s.charAt(i - 1) == '='))) return true;
+                } else if ((c == '=' || c == '!') && i + 1 < s.length() && s.charAt(i + 1) == '=') {
+                    return true;
+                }
+            }
+        }
+        return findTopLevelKwLava(s, "in") >= 0 || findTopLevelKwLava(s, "is") >= 0;
+    }
+
+    private static String translateFStringLava(String inner, char quoteCh) {
+        StringBuilder fmtStr = new StringBuilder();
+        List<String> args = new ArrayList<>();
+        boolean hasInterp = false;
+        int i = 0;
+        while (i < inner.length()) {
+            char c = inner.charAt(i);
+            if (c == '\\' && i + 1 < inner.length()) {
+                fmtStr.append(c).append(inner.charAt(i + 1));
+                i += 2;
+                continue;
+            }
+            if (quoteCh == '\'' && c == '"') {
+                fmtStr.append("\\\"");
+                i++;
+                continue;
+            }
+            if (c == '%') {
+                fmtStr.append("%%");
+                i++;
+                continue;
+            }
+            if (c == '{') {
+                if (i + 1 < inner.length() && inner.charAt(i + 1) == '{') {
+                    fmtStr.append('{');
+                    i += 2;
+                    continue;
+                }
+                int closeB = findMatchingDelim(inner, i, '{', '}');
+                if (closeB < inner.length()) {
+                    hasInterp = true;
+                    String exprPart = inner.substring(i + 1, closeB);
+                    int col = findTopLevelTokLava(exprPart, ":");
+                    String spec = "s";
+                    if (col >= 0) {
+                        String s2 = exprPart.substring(col + 1).trim();
+                        if (!s2.isEmpty()) spec = s2;
+                        exprPart = exprPart.substring(0, col);
+                    }
+                    fmtStr.append('%').append(spec);
+                    args.add(translateTokensLavaToJava(exprPart.trim()));
+                    i = closeB + 1;
+                    continue;
+                }
+            }
+            if (c == '}' && i + 1 < inner.length() && inner.charAt(i + 1) == '}') {
+                fmtStr.append('}');
+                i += 2;
+                continue;
+            }
+            fmtStr.append(c);
+            i++;
+        }
+        if (!hasInterp) {
+            return "\"" + fmtStr.toString().replace("%%", "%") + "\"";
+        }
+        return "String.format(\"" + fmtStr + "\", " + String.join(", ", args) + ")";
+    }
+
+    private static String[] translateLambdaLava(String rest) {
+        int idx = 0;
+        while (idx < rest.length() && rest.charAt(idx) == ' ') idx++;
+        String paramsStr = "";
+        int bodyColon = -1;
+        if (idx < rest.length() && rest.charAt(idx) == '(') {
+            int rp = findMatchingParen(rest, idx);
+            if (rp >= rest.length()) return null;
+            paramsStr = rest.substring(idx + 1, rp);
+            int after = rp + 1;
+            while (after < rest.length() && rest.charAt(after) == ' ') after++;
+            if (rest.startsWith("->", after)) {
+                int colRel = findTopLevelTokLava(rest.substring(after + 2), ":");
+                if (colRel < 0) return null;
+                bodyColon = after + 2 + colRel;
+            } else if (after < rest.length() && rest.charAt(after) == ':') {
+                bodyColon = after;
+            } else {
+                return null;
+            }
+        } else {
+            int depth = 0;
+            char quote = 0;
+            int arrowIdx = -1;
+            List<Integer> colons = new ArrayList<>();
+            for (int k = idx; k < rest.length(); k++) {
+                char c = rest.charAt(k);
+                if (quote != 0) {
+                    if (c == '\\' && k + 1 < rest.length()) k++;
+                    else if (c == quote) quote = 0;
+                    continue;
+                }
+                if (c == '"' || c == '\'') quote = c;
+                else if (c == '(' || c == '[' || c == '{') depth++;
+                else if (c == ')' || c == ']' || c == '}') {
+                    if (depth == 0) break;
+                    depth--;
+                } else if (depth == 0) {
+                    if (rest.startsWith("->", k)) { arrowIdx = k; break; }
+                    if (c == ':' && (k + 1 >= rest.length() || rest.charAt(k + 1) != ':')) colons.add(k);
+                }
+            }
+            if (arrowIdx >= 0) {
+                paramsStr = rest.substring(idx, arrowIdx).trim();
+                int colRel = findTopLevelTokLava(rest.substring(arrowIdx + 2), ":");
+                if (colRel < 0) return null;
+                bodyColon = arrowIdx + 2 + colRel;
+            } else if (!colons.isEmpty()) {
+                bodyColon = colons.get(colons.size() - 1);
+                paramsStr = rest.substring(idx, bodyColon).trim();
+            } else {
+                return null;
+            }
+        }
+        int bodyStart = bodyColon + 1;
+        int bodyEnd = rest.length();
+        int depth = 0;
+        char quote = 0;
+        for (int k = bodyStart; k < rest.length(); k++) {
+            char c = rest.charAt(k);
+            if (quote != 0) {
+                if (c == '\\' && k + 1 < rest.length()) k++;
+                else if (c == quote) quote = 0;
+                continue;
+            }
+            if (c == '"' || c == '\'') quote = c;
+            else if (c == '(' || c == '[' || c == '{') depth++;
+            else if (c == ')' || c == ']' || c == '}') {
+                if (depth == 0) { bodyEnd = k; break; }
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                bodyEnd = k;
+                break;
+            }
+        }
+        String body = rest.substring(bodyStart, bodyEnd).trim();
+        if (body.isEmpty()) return null;
+        String javaParams = formatJavaParamList(paramsStr);
+        String javaBody = translateTokensLavaToJava(body);
+        return new String[]{"(" + javaParams + ") -> " + javaBody, String.valueOf(bodyEnd)};
+    }
+
     /* Translate expression tokens from Lava to Java, respecting string/char literals */
     private static String translateTokensLavaToJava(String s) {
+        String trimmed = s.trim();
+        if (!hasTopLevelAssignOrSepLava(trimmed) && findTopLevelKwLava(trimmed, "lambda") < 0) {
+            String[] tern = trySplitTernaryLava(trimmed);
+            if (tern != null) {
+                return "(" + translateTokensLavaToJava(tern[1]) + " ? " +
+                    translateTokensLavaToJava(tern[0]) + " : " +
+                    translateTokensLavaToJava(tern[2]) + ")";
+            }
+            int orIdx = findTopLevelKwLava(trimmed, "or");
+            if (orIdx > 0) {
+                return translateTokensLavaToJava(trimmed.substring(0, orIdx).trim()) + " || " +
+                    translateTokensLavaToJava(trimmed.substring(orIdx + 2).trim());
+            }
+            int andIdx = findTopLevelKwLava(trimmed, "and");
+            if (andIdx > 0) {
+                return translateTokensLavaToJava(trimmed.substring(0, andIdx).trim()) + " && " +
+                    translateTokensLavaToJava(trimmed.substring(andIdx + 3).trim());
+            }
+            int notKw = startsWithKw(trimmed, "not");
+            if (notKw >= 0 && notKw < trimmed.length()) {
+                String afterNot = trimmed.substring(notKw).trim();
+                int inIdx = findTopLevelKwLava(afterNot, "in");
+                if (inIdx > 0) {
+                    lavaUsedInHelper = true;
+                    return "!_lavaIn(" + translateTokensLavaToJava(afterNot.substring(inIdx + 2).trim()) + ", " +
+                        translateTokensLavaToJava(afterNot.substring(0, inIdx).trim()) + ")";
+                }
+                if (hasComparisonOpLava(afterNot)) {
+                    return "!(" + translateTokensLavaToJava(afterNot) + ")";
+                }
+            }
+            int notIdx = findTopLevelKwLava(trimmed, "not");
+            if (notIdx > 0) {
+                String afterN = trimmed.substring(notIdx + 3).trim();
+                int inAfter = startsWithKw(afterN, "in");
+                if (inAfter >= 0 && inAfter < afterN.length()) {
+                    lavaUsedInHelper = true;
+                    return "!_lavaIn(" + translateTokensLavaToJava(afterN.substring(inAfter).trim()) + ", " +
+                        translateTokensLavaToJava(trimmed.substring(0, notIdx).trim()) + ")";
+                }
+            }
+            int inIdx = findTopLevelKwLava(trimmed, "in");
+            if (inIdx > 0) {
+                lavaUsedInHelper = true;
+                return "_lavaIn(" + translateTokensLavaToJava(trimmed.substring(inIdx + 2).trim()) + ", " +
+                    translateTokensLavaToJava(trimmed.substring(0, inIdx).trim()) + ")";
+            }
+            int isIdx = findTopLevelKwLava(trimmed, "is");
+            if (isIdx > 0) {
+                String rhs = trimmed.substring(isIdx + 2).trim();
+                int notRhs = startsWithKw(rhs, "not");
+                if (notRhs >= 0 && notRhs < rhs.length()) {
+                    return translateTokensLavaToJava(trimmed.substring(0, isIdx).trim()) + " != " +
+                        translateTokensLavaToJava(rhs.substring(notRhs).trim());
+                }
+                return translateTokensLavaToJava(trimmed.substring(0, isIdx).trim()) + " == " +
+                    translateTokensLavaToJava(rhs);
+            }
+            List<String> cmpOps = new ArrayList<>();
+            List<String> operands = trySplitChainedCmpLava(trimmed, cmpOps);
+            if (operands != null) {
+                StringBuilder cb = new StringBuilder();
+                for (int k = 0; k < cmpOps.size(); k++) {
+                    if (k > 0) cb.append(" && ");
+                    cb.append('(')
+                      .append(translateTokensLavaToJava(operands.get(k)))
+                      .append(' ').append(cmpOps.get(k)).append(' ')
+                      .append(translateTokensLavaToJava(operands.get(k + 1)))
+                      .append(')');
+                }
+                return cb.toString();
+            }
+            int flIdx = findTopLevelTokLava(trimmed, "//");
+            if (flIdx > 0) {
+                lavaUsedFloorDiv = true;
+                return "_lavaFloorDiv(" + translateTokensLavaToJava(trimmed.substring(0, flIdx).trim()) + ", " +
+                    translateTokensLavaToJava(trimmed.substring(flIdx + 2).trim()) + ")";
+            }
+            int pwIdx = findTopLevelTokLava(trimmed, "**");
+            if (pwIdx > 0) {
+                return "Math.pow(" + translateTokensLavaToJava(trimmed.substring(0, pwIdx).trim()) + ", " +
+                    translateTokensLavaToJava(trimmed.substring(pwIdx + 2).trim()) + ")";
+            }
+        }
+
         StringBuilder out = new StringBuilder(s.length() + 16);
         int len = s.length();
         int i = 0;
         while (i < len) {
             char c = s.charAt(i);
+            if (c == 'f' && i + 1 < len && (s.charAt(i + 1) == '"' || s.charAt(i + 1) == '\'') &&
+                (i == 0 || !isIdentCont(s.charAt(i - 1)))) {
+                char q = s.charAt(i + 1);
+                int j = i + 2;
+                while (j < len) {
+                    if (s.charAt(j) == '\\' && j + 1 < len) j += 2;
+                    else if (s.charAt(j) == q) break;
+                    else j++;
+                }
+                if (j < len) {
+                    out.append(translateFStringLava(s.substring(i + 2, j), q));
+                    i = j + 1;
+                    continue;
+                }
+            }
             if (c == '"' || c == '\'') {
                 char quote = c;
                 out.append(c);
@@ -428,6 +822,37 @@ public class Lava {
                 while (i < len && isIdentCont(s.charAt(i))) i++;
                 String word = s.substring(start, i);
                 boolean isMember = (start > 0 && s.charAt(start - 1) == '.');
+
+                if (!isMember && word.equals("lambda") && i < len &&
+                    (s.charAt(i) == ' ' || s.charAt(i) == '(' || s.charAt(i) == ':')) {
+                    String[] lam = translateLambdaLava(s.substring(i));
+                    if (lam != null) {
+                        out.append(lam[0]);
+                        i += Integer.parseInt(lam[1]);
+                        continue;
+                    }
+                }
+
+                /* Negative index `xs[-N]` -> `_lavaGet(xs, _lavaLen(xs) - N)` */
+                if (!isMember && i < len && s.charAt(i) == '[') {
+                    int closeB = findMatchingDelim(s, i, '[', ']');
+                    if (closeB < len) {
+                        String idxStr = s.substring(i + 1, closeB).trim();
+                        if (idxStr.startsWith("-") && idxStr.length() > 1) {
+                            boolean digits = true;
+                            for (int di = 1; di < idxStr.length(); di++) {
+                                if (!Character.isDigit(idxStr.charAt(di))) { digits = false; break; }
+                            }
+                            if (digits) {
+                                lavaUsedLenGet = true;
+                                out.append("_lavaGet(").append(word).append(", _lavaLen(").append(word)
+                                   .append(") - ").append(idxStr.substring(1)).append(')');
+                                i = closeB + 1;
+                                continue;
+                            }
+                        }
+                    }
+                }
 
                 /* `new list[T](...)` / `new set[T](...)` / `new dict[K, V](...)` constructor calls */
                 if (!isMember && word.equals("new") && i < len && s.charAt(i) == ' ') {
@@ -764,7 +1189,7 @@ public class Lava {
         StringBuilder out = new StringBuilder();
         boolean first = true;
         for (String p : parts) {
-            if (p.isEmpty()) continue;
+            if (p.isEmpty() || p.equals("self")) continue;
             if (!first) out.append(", ");
             first = false;
 
@@ -1080,6 +1505,65 @@ public class Lava {
         return sb.toString();
     }
 
+    private static String[] tryEmitForInLines(String expr) {
+        int depth = 0;
+        int inPos = -1;
+        for (int i = 0; i + 4 <= expr.length(); i++) {
+            char c = expr.charAt(i);
+            if (c == '(' || c == '[' || c == '<') depth++;
+            else if (c == ')' || c == ']' || c == '>') depth--;
+            else if (depth == 0 && expr.startsWith(" in ", i)) {
+                inPos = i;
+                break;
+            }
+        }
+        if (inPos < 0) return null;
+
+        String varPart = expr.substring(0, inPos).trim();
+        String rhs = expr.substring(inPos + 4).trim();
+        int vcolon = varPart.indexOf(':');
+        String vname = (vcolon >= 0) ? varPart.substring(0, vcolon).trim() : varPart;
+        if (vname.startsWith("(") && vname.endsWith(")")) {
+            vname = vname.substring(1, vname.length() - 1).trim();
+        }
+
+        if (rhs.startsWith("enumerate(") && findMatchingParen(rhs, 9) == rhs.length() - 1) {
+            String inner = translateTokensLavaToJava(rhs.substring(10, rhs.length() - 1).trim());
+            List<String> vs = splitTopLevelCommas(vname);
+            if (vs.size() == 2) {
+                lavaUsedLenGet = true;
+                return new String[]{
+                    "for (int " + vs.get(0) + " = 0; " + vs.get(0) + " < _lavaLen(" + inner + "); " + vs.get(0) + "++) {",
+                    "var " + vs.get(1) + " = _lavaGet(" + inner + ", " + vs.get(0) + ");"
+                };
+            }
+        }
+        if (rhs.startsWith("zip(") && findMatchingParen(rhs, 3) == rhs.length() - 1) {
+            List<String> zargs = splitTopLevelCommas(rhs.substring(4, rhs.length() - 1));
+            List<String> vs = splitTopLevelCommas(vname);
+            if (zargs.size() == 2 && vs.size() == 2) {
+                lavaUsedLenGet = true;
+                String aExpr = translateTokensLavaToJava(zargs.get(0));
+                String bExpr = translateTokensLavaToJava(zargs.get(1));
+                return new String[]{
+                    "for (int _zi = 0; _zi < Math.min(_lavaLen(" + aExpr + "), _lavaLen(" + bExpr + ")); _zi++) {",
+                    "var " + vs.get(0) + " = _lavaGet(" + aExpr + ", _zi); var " + vs.get(1) + " = _lavaGet(" + bExpr + ", _zi);"
+                };
+            }
+        }
+        if (rhs.startsWith("reversed(") && findMatchingParen(rhs, 8) == rhs.length() - 1) {
+            String inner = translateTokensLavaToJava(rhs.substring(9, rhs.length() - 1).trim());
+            lavaUsedLenGet = true;
+            return new String[]{
+                "for (int _ri = _lavaLen(" + inner + ") - 1; _ri >= 0; _ri--) {",
+                "var " + vname + " = _lavaGet(" + inner + ", _ri);"
+            };
+        }
+
+        String std = tryEmitForIn(expr);
+        return std != null ? new String[]{std, null} : null;
+    }
+
     private enum CompKind {
         LIST,
         SET,
@@ -1103,63 +1587,54 @@ public class Lava {
         }
 
         String inner = val.substring(1, val.length() - 1);
-        int forIdx = -1;
-        int depth = 0;
-        char quote = 0;
-        for (int i = 0; i + 5 <= inner.length(); i++) {
-            char c = inner.charAt(i);
-            if (quote != 0) {
-                if (c == '\\' && i + 1 < inner.length()) i++;
-                else if (c == quote) quote = 0;
-                continue;
-            }
-            if (c == '"' || c == '\'') quote = c;
-            else if (c == '(' || c == '[' || c == '{') depth++;
-            else if (c == ')' || c == ']' || c == '}') depth--;
-            else if (depth == 0 && inner.startsWith(" for ", i)) {
-                forIdx = i;
-                break;
-            }
-        }
-        if (forIdx < 0) return false;
+        int forIdx = findTopLevelKwLava(inner, "for");
+        if (forIdx <= 0) return false;
 
         String head = inner.substring(0, forIdx).trim();
         if (head.isEmpty()) return false;
 
-        String afterFor = inner.substring(forIdx + 5);
-        int inIdx = -1;
-        int ifIdx = -1;
-        depth = 0;
-        quote = 0;
-        for (int i = 0; i < afterFor.length(); i++) {
-            char c = afterFor.charAt(i);
-            if (quote != 0) {
-                if (c == '\\' && i + 1 < afterFor.length()) i++;
-                else if (c == quote) quote = 0;
-                continue;
+        List<String[]> clauses = new ArrayList<>();
+        String rem = inner.substring(forIdx + 3).trim();
+        while (!rem.isEmpty()) {
+            int inIdx = findTopLevelKwLava(rem, "in");
+            if (inIdx <= 0) return false;
+            String lhsPart = rem.substring(0, inIdx).trim();
+            String afterIn = rem.substring(inIdx + 2).trim();
+            int nextFor = findTopLevelKwLava(afterIn, "for");
+            String seg;
+            if (nextFor >= 0) {
+                seg = afterIn.substring(0, nextFor).trim();
+                rem = afterIn.substring(nextFor + 3).trim();
+            } else {
+                seg = afterIn;
+                rem = "";
             }
-            if (c == '"' || c == '\'') quote = c;
-            else if (c == '(' || c == '[' || c == '{') depth++;
-            else if (c == ')' || c == ']' || c == '}') depth--;
-            else if (depth == 0) {
-                if (inIdx < 0 && i + 4 <= afterFor.length() && afterFor.startsWith(" in ", i)) {
-                    inIdx = i;
-                } else if (inIdx >= 0 && i + 4 <= afterFor.length() && afterFor.startsWith(" if ", i)) {
-                    ifIdx = i;
-                    break;
+            String iterPart;
+            List<String> conds = new ArrayList<>();
+            int firstIf = findTopLevelKwLava(seg, "if");
+            if (firstIf >= 0) {
+                iterPart = seg.substring(0, firstIf).trim();
+                String ctail = seg.substring(firstIf + 2).trim();
+                if (ctail.isEmpty()) return false;
+                while (!ctail.isEmpty()) {
+                    int ni = findTopLevelKwLava(ctail, "if");
+                    if (ni < 0) { conds.add(ctail); break; }
+                    String c = ctail.substring(0, ni).trim();
+                    if (c.isEmpty()) return false;
+                    conds.add(c);
+                    ctail = ctail.substring(ni + 2).trim();
                 }
+            } else {
+                iterPart = seg;
             }
+            if (iterPart.isEmpty()) return false;
+            String vname = lhsPart.contains(":") ? lhsPart.substring(0, lhsPart.indexOf(':')).trim() : lhsPart;
+            if (vname.isEmpty()) return false;
+            String condJoined = conds.isEmpty() ? null : String.join(" and ", conds);
+            clauses.add(new String[]{lhsPart + " in " + iterPart, condJoined, vname});
         }
-        if (inIdx < 0) return false;
-
-        String forClause = (ifIdx >= 0 ? afterFor.substring(0, ifIdx) : afterFor).trim();
-        String condStr = (ifIdx >= 0) ? afterFor.substring(ifIdx + 4).trim() : null;
-        if (condStr != null && condStr.isEmpty()) return false;
-
-        String vname = afterFor.substring(0, inIdx).trim();
-        int vcolon = vname.indexOf(':');
-        if (vcolon >= 0) vname = vname.substring(0, vcolon).trim();
-        if (vname.isEmpty()) return false;
+        if (clauses.isEmpty()) return false;
+        String vname = clauses.get(clauses.size() - 1)[2];
 
         CompKind kind = CompKind.LIST;
         String keyStr = null;
@@ -1167,8 +1642,8 @@ public class Lava {
 
         if (!isBracket) {
             int colonIdx = -1;
-            depth = 0;
-            quote = 0;
+            int depth = 0;
+            char quote = 0;
             int qmarkDepth = 0;
             for (int i = 0; i < head.length(); i++) {
                 char c = head.charAt(i);
@@ -1214,23 +1689,32 @@ public class Lava {
                .append(" = new ").append(rawCollection).append("<>();\n");
         }
 
-        /* Emit `for (...) {` */
-        appendIndent(out, javaIndent, level);
-        String forHeader = tryEmitForIn(forClause);
-        if (forHeader != null) {
-            out.append(forHeader).append('\n');
-        } else {
-            out.append("for (").append(translateTokensLavaToJava(forClause)).append(") {\n");
+        /* Emit nested `for (...) {` and optional `if (cond) {` */
+        int curLevel = level;
+        List<Integer> closers = new ArrayList<>();
+        for (String[] cl : clauses) {
+            appendIndent(out, javaIndent, curLevel);
+            String[] fl = tryEmitForInLines(cl[0]);
+            if (fl != null) {
+                out.append(fl[0]).append('\n');
+                if (fl[1] != null) {
+                    appendIndent(out, javaIndent, curLevel + 1);
+                    out.append(fl[1]).append('\n');
+                }
+            } else {
+                out.append("for (").append(translateTokensLavaToJava(cl[0])).append(") {\n");
+            }
+            closers.add(curLevel);
+            curLevel++;
+            if (cl[1] != null) {
+                appendIndent(out, javaIndent, curLevel);
+                out.append("if (").append(translateTokensLavaToJava(cl[1])).append(") {\n");
+                closers.add(curLevel);
+                curLevel++;
+            }
         }
 
-        /* Optional `if (cond) {` filter */
-        if (condStr != null) {
-            appendIndent(out, javaIndent, level + 1);
-            out.append("if (").append(translateTokensLavaToJava(condStr)).append(") {\n");
-        }
-
-        int bodyLevel = level + (condStr != null ? 2 : 1);
-        appendIndent(out, javaIndent, bodyLevel);
+        appendIndent(out, javaIndent, curLevel);
         out.append(translateTokensLavaToJava(lhsName));
 
         if (kind == CompKind.LIST) {
@@ -1256,13 +1740,11 @@ public class Lava {
             }
         }
 
-        if (condStr != null) {
-            appendIndent(out, javaIndent, level + 1);
-            out.append("}\n");
+        for (int ci = closers.size() - 1; ci >= 0; ci--) {
+            appendIndent(out, javaIndent, closers.get(ci));
+            out.append('}');
+            if (ci > 0) out.append('\n');
         }
-
-        appendIndent(out, javaIndent, level);
-        out.append('}');
         return true;
     }
 
@@ -1313,12 +1795,255 @@ public class Lava {
         return translateTokensLavaToJava(h);
     }
 
+    private record LogicalLineLava(int lineNo, String raw) {}
+
+    private static int[] updateDepthLava(String code, int parenDepth) {
+        char q = 0;
+        for (int i = 0; i < code.length(); i++) {
+            char c = code.charAt(i);
+            if (q != 0) {
+                if (c == '\\' && i + 1 < code.length()) i++;
+                else if (c == q) q = 0;
+                continue;
+            }
+            if (c == '"' || c == '\'') { q = c; continue; }
+            if (c == '(' || c == '[' || c == '{') parenDepth++;
+            else if ((c == ')' || c == ']' || c == '}') && parenDepth > 0) parenDepth--;
+        }
+        return new int[]{parenDepth};
+    }
+
+    private static String escapeSingleLineLava(String body, boolean isF) {
+        StringBuilder sb = new StringBuilder(isF ? "f\"" : "\"");
+        for (int i = 0; i < body.length(); i++) {
+            char c = body.charAt(i);
+            if (c == '\n') sb.append("\\n");
+            else if (c == '"') sb.append("\\\"");
+            else sb.append(c);
+        }
+        return sb.append('"').toString();
+    }
+
+    private static int[] findTripleStartLava(String s) {
+        char q = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (q != 0) {
+                if (c == '\\' && i + 1 < s.length()) i++;
+                else if (c == q) q = 0;
+                continue;
+            }
+            if (c == '#' && (i == 0 || s.charAt(i - 1) == ' ' || s.charAt(i - 1) == '\t')) break;
+            if (s.startsWith("f\"\"\"", i) && (i == 0 || !isIdentCont(s.charAt(i - 1)))) return new int[]{i, 0, 1};
+            if (s.startsWith("f'''", i) && (i == 0 || !isIdentCont(s.charAt(i - 1)))) return new int[]{i, 1, 1};
+            if (s.startsWith("\"\"\"", i)) return new int[]{i, 0, 0};
+            if (s.startsWith("'''", i)) return new int[]{i, 1, 0};
+            if (c == '"' || c == '\'') q = c;
+        }
+        return null;
+    }
+
+    private static String collapseSameLineTripleLava(String s) {
+        String cur = s;
+        for (;;) {
+            int[] ts = findTripleStartLava(cur);
+            if (ts == null) break;
+            String delim = ts[1] == 0 ? "\"\"\"" : "'''";
+            boolean isF = ts[2] == 1;
+            int startOff = ts[0] + (isF ? 4 : 3);
+            int closeIdx = cur.indexOf(delim, startOff);
+            if (closeIdx < 0) break;
+            String lit = escapeSingleLineLava(cur.substring(startOff, closeIdx), isF);
+            cur = cur.substring(0, ts[0]) + lit + cur.substring(closeIdx + 3);
+        }
+        return cur;
+    }
+
+    private static List<LogicalLineLava> preprocessLogicalLinesLava(String src) throws LavaException {
+        List<String> rawLines = new ArrayList<>();
+        int p = 0;
+        int len = src.length();
+        while (p < len) {
+            int ls = p;
+            while (p < len && src.charAt(p) != '\n' && src.charAt(p) != '\r') p++;
+            rawLines.add(src.substring(ls, p));
+            if (p < len) {
+                if (src.charAt(p) == '\r' && p + 1 < len && src.charAt(p + 1) == '\n') p += 2;
+                else p++;
+            }
+        }
+
+        List<LogicalLineLava> result = new ArrayList<>();
+        int curLineNo = 0;
+        StringBuilder acc = new StringBuilder();
+        int parenDepth = 0;
+        boolean continued = false;
+        String tripleQuote = null;
+        boolean tripleF = false;
+        StringBuilder tripleBody = new StringBuilder();
+
+        for (int idx = 0; idx < rawLines.size(); idx++) {
+            int lineNo = idx + 1;
+            String raw = rawLines.get(idx);
+
+            if (tripleQuote != null) {
+                int closeIdx = raw.indexOf(tripleQuote);
+                if (closeIdx >= 0) {
+                    tripleBody.append('\n').append(raw, 0, closeIdx);
+                    String rest = raw.substring(closeIdx + 3);
+                    acc.append(escapeSingleLineLava(tripleBody.toString(), tripleF))
+                       .append(collapseSameLineTripleLava(rest));
+                    tripleQuote = null;
+                    tripleBody.setLength(0);
+                    String accStr = acc.toString();
+                    String trimmedAcc = accStr.stripLeading();
+                    String[] sp = splitInlineHashComment(trimmedAcc);
+                    parenDepth = updateDepthLava(sp[0], 0)[0];
+                    continued = accStr.endsWith("\\");
+                    if (continued) {
+                        acc.setLength(0);
+                        acc.append(accStr.substring(0, accStr.length() - 1).stripTrailing()).append(' ');
+                    } else if (parenDepth == 0) {
+                        result.add(new LogicalLineLava(curLineNo, accStr));
+                        acc.setLength(0);
+                    }
+                } else {
+                    tripleBody.append('\n').append(raw);
+                }
+                continue;
+            }
+
+            if (parenDepth == 0 && !continued) {
+                boolean allWs = true;
+                for (int k = 0; k < raw.length(); k++) {
+                    if (raw.charAt(k) != ' ' && raw.charAt(k) != '\t') { allWs = false; break; }
+                }
+                if (allWs) {
+                    result.add(new LogicalLineLava(lineNo, raw));
+                    continue;
+                }
+                char lastCh = raw.charAt(raw.length() - 1);
+                if (lastCh == ' ' || lastCh == '\t') {
+                    throw new LavaException("trailing whitespace is not allowed", lineNo, raw.length());
+                }
+                curLineNo = lineNo;
+            }
+
+            String line = collapseSameLineTripleLava(raw);
+            int[] ts = findTripleStartLava(line);
+            if (ts != null) {
+                String delim = ts[1] == 0 ? "\"\"\"" : "'''";
+                boolean isF = ts[2] == 1;
+                int startOff = ts[0] + (isF ? 4 : 3);
+                String prefix = line.substring(0, ts[0]);
+                if (acc.length() > 0) {
+                    acc.append(' ').append(prefix.stripLeading());
+                } else {
+                    acc.append(prefix);
+                }
+                tripleQuote = delim;
+                tripleF = isF;
+                tripleBody.append(line.substring(startOff));
+                continue;
+            }
+
+            if (parenDepth > 0 || continued) {
+                String chunk = line.trim();
+                String[] sp = splitInlineHashComment(chunk);
+                String code = sp[0];
+                if (code.endsWith("\\")) {
+                    acc.append(' ').append(code.substring(0, code.length() - 1).trim());
+                    continued = true;
+                    continue;
+                }
+                continued = false;
+                String accStr = acc.toString();
+                if (accStr.endsWith("(") || accStr.endsWith("[") || accStr.endsWith("{")) {
+                    acc.append(code);
+                } else if (!code.isEmpty()) {
+                    acc.append(' ').append(code);
+                }
+                accStr = acc.toString();
+                String[] sp2 = splitInlineHashComment(accStr.stripLeading());
+                parenDepth = updateDepthLava(sp2[0], 0)[0];
+                if (parenDepth == 0) {
+                    result.add(new LogicalLineLava(curLineNo, accStr));
+                    acc.setLength(0);
+                }
+                continue;
+            }
+
+            String trimmedStart = line.stripLeading();
+            String[] sp = splitInlineHashComment(trimmedStart);
+            if (sp[1] == null && line.endsWith("\\")) {
+                acc.append(line.substring(0, line.length() - 1).stripTrailing());
+                continued = true;
+                continue;
+            }
+            parenDepth = updateDepthLava(sp[0], 0)[0];
+            if (parenDepth > 0) {
+                int wsLen = line.length() - trimmedStart.length();
+                acc.append(line, 0, wsLen).append(sp[0]);
+            } else {
+                result.add(new LogicalLineLava(lineNo, line));
+            }
+        }
+
+        if (tripleQuote != null) {
+            throw new LavaException("unterminated triple-quoted string", curLineNo, 1);
+        }
+        if (acc.length() > 0) {
+            result.add(new LogicalLineLava(curLineNo, acc.toString()));
+        }
+        return result;
+    }
+
+    private static String buildLavaHelpers(String ind) {
+        StringBuilder h = new StringBuilder();
+        if (lavaUsedInHelper) {
+            h.append(ind).append("private static boolean _lavaIn(java.util.Collection<?> c, Object k) { return c.contains(k); }\n");
+            h.append(ind).append("private static boolean _lavaIn(java.util.Map<?, ?> c, Object k) { return c.containsKey(k); }\n");
+            h.append(ind).append("private static boolean _lavaIn(String c, String k) { return c.contains(k); }\n");
+            h.append(ind).append("private static boolean _lavaIn(int[] c, int k) { for (int x : c) if (x == k) return true; return false; }\n");
+            h.append(ind).append("private static boolean _lavaIn(long[] c, long k) { for (long x : c) if (x == k) return true; return false; }\n");
+            h.append(ind).append("private static boolean _lavaIn(double[] c, double k) { for (double x : c) if (x == k) return true; return false; }\n");
+            h.append(ind).append("private static <T> boolean _lavaIn(T[] c, T k) { for (T x : c) if (java.util.Objects.equals(x, k)) return true; return false; }\n");
+        }
+        if (lavaUsedFloorDiv) {
+            h.append(ind).append("private static int _lavaFloorDiv(int a, int b) { return Math.floorDiv(a, b); }\n");
+            h.append(ind).append("private static long _lavaFloorDiv(long a, long b) { return Math.floorDiv(a, b); }\n");
+            h.append(ind).append("private static double _lavaFloorDiv(double a, double b) { return Math.floor(a / b); }\n");
+        }
+        if (lavaUsedLenGet) {
+            h.append(ind).append("private static int _lavaLen(int[] a) { return a.length; }\n");
+            h.append(ind).append("private static int _lavaLen(long[] a) { return a.length; }\n");
+            h.append(ind).append("private static int _lavaLen(double[] a) { return a.length; }\n");
+            h.append(ind).append("private static int _lavaLen(boolean[] a) { return a.length; }\n");
+            h.append(ind).append("private static <T> int _lavaLen(T[] a) { return a.length; }\n");
+            h.append(ind).append("private static int _lavaLen(java.util.List<?> a) { return a.size(); }\n");
+            h.append(ind).append("private static int _lavaLen(String a) { return a.length(); }\n");
+            h.append(ind).append("private static int _lavaGet(int[] a, int i) { return a[i]; }\n");
+            h.append(ind).append("private static long _lavaGet(long[] a, int i) { return a[i]; }\n");
+            h.append(ind).append("private static double _lavaGet(double[] a, int i) { return a[i]; }\n");
+            h.append(ind).append("private static boolean _lavaGet(boolean[] a, int i) { return a[i]; }\n");
+            h.append(ind).append("private static <T> T _lavaGet(T[] a, int i) { return a[i]; }\n");
+            h.append(ind).append("private static <T> T _lavaGet(java.util.List<T> a, int i) { return a.get(i); }\n");
+        }
+        return h.toString();
+    }
+
     public static String lavaToJava(String src) throws LavaException {
         if (!src.isEmpty() && src.charAt(0) == '\uFEFF') {
             throw new LavaException("UTF-8 BOM is not allowed", 1, 1);
         }
 
         resetSymtab();
+        lavaUsedInHelper = false;
+        lavaUsedFloorDiv = false;
+        lavaUsedLenGet = false;
+
+        List<LogicalLineLava> logicalLines = preprocessLogicalLinesLava(src);
+
         StringBuilder out = new StringBuilder(src.length() * 2 + 128);
 
         char indentChar = 0;
@@ -1327,33 +2052,24 @@ public class Lava {
         int currentLevel = 0;
         boolean prevLineOpenedBlock = false;
         int prevBlockLine = 0;
+        boolean helpersInjected = false;
 
         String javaIndent = "    ";
-        int p = 0;
-        int len = src.length();
-        int lineNo = 0;
 
-        while (p < len) {
-            lineNo++;
-            int lineStart = p;
-            while (p < len && src.charAt(p) != '\n' && src.charAt(p) != '\r') p++;
-            int lineEnd = p;
-            if (p < len) {
-                if (src.charAt(p) == '\r' && p + 1 < len && src.charAt(p + 1) == '\n') p += 2;
-                else p++;
-            }
-
+        for (LogicalLineLava ll : logicalLines) {
+            int lineNo = ll.lineNo();
+            String raw = ll.raw();
             int ws = 0;
             boolean hasSpace = false;
             boolean hasTab = false;
-            while (lineStart + ws < lineEnd) {
-                char c = src.charAt(lineStart + ws);
+            while (ws < raw.length()) {
+                char c = raw.charAt(ws);
                 if (c == ' ') { hasSpace = true; ws++; }
                 else if (c == '\t') { hasTab = true; ws++; }
                 else break;
             }
 
-            if (lineStart + ws == lineEnd) {
+            if (ws == raw.length()) {
                 out.append('\n');
                 continue;
             }
@@ -1362,9 +2078,9 @@ public class Lava {
                 throw new LavaException("mixed spaces and tabs in indentation", lineNo, ws);
             }
 
-            char lastCh = src.charAt(lineEnd - 1);
+            char lastCh = raw.charAt(raw.length() - 1);
             if (lastCh == ' ' || lastCh == '\t') {
-                throw new LavaException("trailing whitespace is not allowed", lineNo, lineEnd - lineStart);
+                throw new LavaException("trailing whitespace is not allowed", lineNo, raw.length());
             }
 
             int level = 0;
@@ -1388,7 +2104,7 @@ public class Lava {
                 }
             }
 
-            String rawContent = src.substring(lineStart + ws, lineEnd);
+            String rawContent = raw.substring(ws);
 
             if (prevLineOpenedBlock && rawContent.charAt(0) != '#') {
                 if (level != currentLevel) {
@@ -1432,8 +2148,13 @@ public class Lava {
                     startsWithKw(content, "while") >= 0 && !content.endsWith(":")) {
                     break;
                 }
-                stack.remove(stack.size() - 1);
-                closeBlockFrame(out, top, javaIndent);
+                BlockFrame popped = stack.remove(stack.size() - 1);
+                if (popped.kind() == BlockKind.CLASS_OR_INTERFACE && popped.level() == 0 && !helpersInjected) {
+                    String h = buildLavaHelpers(javaIndent);
+                    if (!h.isEmpty()) out.append(h);
+                    helpersInjected = true;
+                }
+                closeBlockFrame(out, popped, javaIndent);
             }
             currentLevel = level;
 
@@ -1478,14 +2199,19 @@ public class Lava {
                 continue;
             }
             if ((kwAfter = startsWithKw(content, "from")) >= 0) {
-                appendIndent(out, javaIndent, level);
                 String restFrom = content.substring(kwAfter).trim();
                 int impPos = restFrom.indexOf(" import ");
                 if (impPos > 0) {
                     String pkg = restFrom.substring(0, impPos).trim();
-                    String sym = restFrom.substring(impPos + 8).trim();
-                    out.append("import ").append(pkg).append('.').append(sym).append(';');
+                    String symRaw = restFrom.substring(impPos + 8).trim();
+                    List<String> syms = splitTopLevelCommas(symRaw);
+                    for (int si = 0; si < syms.size(); si++) {
+                        if (si > 0) out.append('\n');
+                        appendIndent(out, javaIndent, level);
+                        out.append("import ").append(pkg).append('.').append(syms.get(si)).append(';');
+                    }
                 } else {
+                    appendIndent(out, javaIndent, level);
                     out.append("import ").append(restFrom).append(';');
                 }
                 if (inlineComment != null) out.append(" //").append(inlineComment);
@@ -1563,9 +2289,16 @@ public class Lava {
                 } else if ((kwAfter = startsWithKw(header, "for")) >= 0) {
                     appendIndent(out, javaIndent, level);
                     String fexpr = header.substring(kwAfter).trim();
-                    String forIn = tryEmitForIn(fexpr);
+                    String[] forIn = tryEmitForInLines(fexpr);
                     if (forIn != null) {
-                        out.append(forIn);
+                        out.append(forIn[0]);
+                        if (forIn[1] != null) {
+                            if (inlineComment != null) out.append(" //").append(inlineComment);
+                            out.append('\n');
+                            appendIndent(out, javaIndent, level + 1);
+                            out.append(forIn[1]);
+                            inlineComment = null;
+                        }
                     } else {
                         out.append("for (");
                         int semi1 = fexpr.indexOf(';');
@@ -1586,6 +2319,22 @@ public class Lava {
                             out.append(translateTokensLavaToJava(fexpr));
                         }
                         out.append(") {");
+                    }
+                    stack.add(new BlockFrame(level, BlockKind.NORMAL));
+                    currentLevel = level + 1;
+                    prevLineOpenedBlock = true;
+                    prevBlockLine = lineNo;
+                } else if ((kwAfter = startsWithKw(header, "with")) >= 0) {
+                    appendIndent(out, javaIndent, level);
+                    String wexpr = header.substring(kwAfter).trim();
+                    int asIdx = findTopLevelKwLava(wexpr, "as");
+                    if (asIdx > 0) {
+                        String exprS = wexpr.substring(0, asIdx).trim();
+                        String vname = wexpr.substring(asIdx + 2).trim();
+                        out.append("try (var ").append(vname).append(" = ")
+                           .append(translateTokensLavaToJava(exprS)).append(") {");
+                    } else {
+                        out.append("try (").append(translateTokensLavaToJava(wexpr)).append(") {");
                     }
                     stack.add(new BlockFrame(level, BlockKind.NORMAL));
                     currentLevel = level + 1;
@@ -1735,6 +2484,32 @@ public class Lava {
                 String constJava = inClassScope ? tryEmitLavaConstAssign(content) : null;
                 if (constJava != null) {
                     out.append(constJava);
+                } else if ((kwAfter = startsWithKw(content, "raise")) >= 0) {
+                    String rexpr = content.substring(kwAfter).trim();
+                    out.append("throw ").append(rexpr.isEmpty() ? "new RuntimeException()" : translateTokensLavaToJava(rexpr)).append(';');
+                } else if ((kwAfter = startsWithKw(content, "del")) >= 0 && kwAfter < content.length()) {
+                    String dexpr = content.substring(kwAfter).trim();
+                    int ob = -1, bdep = 0;
+                    char bq = 0;
+                    for (int k = 0; k < dexpr.length(); k++) {
+                        char c = dexpr.charAt(k);
+                        if (bq != 0) { if (c == '\\' && k + 1 < dexpr.length()) k++; else if (c == bq) bq = 0; continue; }
+                        if (c == '"' || c == '\'') { bq = c; continue; }
+                        if (c == '(' || c == '[' || c == '{') { if (c == '[' && bdep == 0) ob = k; bdep++; }
+                        else if ((c == ')' || c == ']' || c == '}') && bdep > 0) bdep--;
+                    }
+                    if (ob > 0 && dexpr.endsWith("]")) {
+                        out.append(translateTokensLavaToJava(dexpr.substring(0, ob).trim()))
+                           .append(".remove(")
+                           .append(translateTokensLavaToJava(dexpr.substring(ob + 1, dexpr.length() - 1).trim()))
+                           .append(");");
+                    } else {
+                        out.append(translateTokensLavaToJava(content)).append(';');
+                    }
+                } else if ((kwAfter = startsWithKw(content, "return")) >= 0) {
+                    String rexpr = content.substring(kwAfter).trim();
+                    if (rexpr.isEmpty()) out.append("return;");
+                    else out.append("return ").append(translateTokensLavaToJava(rexpr)).append(';');
                 } else {
                     out.append(translateTokensLavaToJava(content));
                     if (!content.endsWith(";") && !content.endsWith(",")) {
@@ -1753,7 +2528,17 @@ public class Lava {
 
         while (!stack.isEmpty()) {
             BlockFrame top = stack.remove(stack.size() - 1);
+            if (top.kind() == BlockKind.CLASS_OR_INTERFACE && top.level() == 0 && !helpersInjected) {
+                String h = buildLavaHelpers(javaIndent);
+                if (!h.isEmpty()) out.append(h);
+                helpersInjected = true;
+            }
             closeBlockFrame(out, top, javaIndent);
+        }
+
+        if (!helpersInjected) {
+            String h = buildLavaHelpers(javaIndent);
+            if (!h.isEmpty()) out.append(h);
         }
 
         return out.toString();
@@ -2873,6 +3658,54 @@ public class Lava {
             passed++;
         } catch (LavaException e) {
             System.err.printf("FAIL [comprehensions]: %s (line %d)\n", e.getMessage(), e.line);
+            return 1;
+        }
+
+        /* Extended Pythonic syntax test */
+        try {
+            String pyLava =
+                "from java.util import ArrayList, HashMap, function.IntUnaryOperator\n" +
+                "\n" +
+                "public class PyTest:\n" +
+                "    val_x: i32 = 5\n" +
+                "    def get_x(self) -> i32:\n" +
+                "        return self.val_x\n" +
+                "    public static def main(args: str[]):\n" +
+                "        doc: str = \"\"\"hello\nworld\"\"\"\n" +
+                "        nums: list[i32] = [\n" +
+                "            x + y\n" +
+                "            for x in range(3)\n" +
+                "            for y in range(2)\n" +
+                "            if x + y > 0\n" +
+                "        ]\n" +
+                "        inc: IntUnaryOperator = lambda x: x + 1\n" +
+                "        tag: str = \"big\" if 2 in nums and 9 not in nums else \"small\"\n" +
+                "        ok: bool = 0 < nums.get(0) < 10 and not 1 == 2 and tag is not nil\n" +
+                "        fv: i32 = -7 // 2\n" +
+                "        pv: f64 = 2 ** 3\n" +
+                "        last_v: i32 = nums[-1]\n" +
+                "        msg: str = f'tag={tag} {3.14159:.2f}'\n" +
+                "        m: HashMap[str, i32] = new HashMap[str, i32]()\n" +
+                "        m.put(\"a\", 1)\n" +
+                "        del m[\"a\"]\n" +
+                "        sum: i32 = 0\n" +
+                "        for i, v in enumerate(nums):\n" +
+                "            sum += i + v\n" +
+                "        for x, y in zip(nums, nums):\n" +
+                "            sum += x + y\n" +
+                "        for r in reversed(nums):\n" +
+                "            sum += r\n" +
+                "        t: PyTest = new PyTest()\n" +
+                "        if ok and isinstance(msg, str):\n" +
+                "            println(f\"doc={doc.length()} inc={inc.applyAsInt(1)} fv={fv} pv={pv} sum={sum} last={last_v} x={t.get_x()} msg={msg}\")\n";
+            String jOut = lavaToJava(pyLava);
+            if (!jOut.contains("int get_x()") || !jOut.contains("_lavaFloorDiv") || !jOut.contains("_lavaIn")) {
+                System.err.println("FAIL [extended_pythonic]:\n" + jOut);
+                return 1;
+            }
+            passed++;
+        } catch (LavaException e) {
+            System.err.printf("FAIL [extended_pythonic]: %s (line %d)\n", e.getMessage(), e.line);
             return 1;
         }
 
