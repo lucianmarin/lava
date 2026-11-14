@@ -13,14 +13,14 @@
  *
  * Build & CLI usage:
  *   make
- *   ./magma examples/hello.mg
- *   ./magma --magma [--indent <N|tab>] examples/hello.mg
+ *   ./magma examples/hello.magma
+ *   ./magma --magma [--indent <N|tab>] examples/hello.magma
  *   ./magma --from-java Hello.java
- *   ./magma --compile examples/hello.mg -o hello
- *   ./magma --run examples/hello.mg
- *   ./magma --check examples/hello.mg
+ *   ./magma --compile examples/hello.magma -o hello
+ *   ./magma --run examples/hello.magma
+ *   ./magma --check examples/hello.magma
  *   ./magma --test
- *   ./magma --bench [file.mg]
+ *   ./magma --bench [file.magma]
  */
 
 import java.io.File;
@@ -2998,14 +2998,14 @@ public class Magma {
     private static void printUsage() {
         System.err.println(
             "Usage:\n" +
-            "  magma <file.mg>                           Transpile Magma to Java on stdout\n" +
+            "  magma <file.magma>                        Transpile Magma to Java on stdout\n" +
             "  magma --magma [--indent <N|tab>] <f>      Format/canonicalize Magma\n" +
             "  magma --from-java [--indent <N|tab>] <f>  Convert Java source to Magma\n" +
-            "  magma --compile <file.mg> [-o <bin>]      Transpile and compile via javac\n" +
-            "  magma --run <file.mg>                     Transpile, compile, and execute immediately\n" +
-            "  magma --check <file.mg>                   Validate Magma syntax only\n" +
+            "  magma --compile <file.magma> [-o <bin>]   Transpile and compile via javac\n" +
+            "  magma --run <file.magma>                  Transpile, compile, and execute immediately\n" +
+            "  magma --check <file.magma>                Validate Magma syntax only\n" +
             "  magma --test                              Run built-in conformance test suite\n" +
-            "  magma --bench [file.mg]                   Run transpilation throughput benchmark"
+            "  magma --bench [file.magma]                Run transpilation throughput benchmark"
         );
     }
 

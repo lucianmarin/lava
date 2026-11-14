@@ -1,6 +1,6 @@
 # Magma Language Specification
 
-**Magma** (`.mg`) is a **1-to-1 Pythonic syntax skin for Java**.
+**Magma** (`.magma`) is a **1-to-1 Pythonic syntax skin for Java**.
 
 Unlike Kotlin, Groovy, or Scala—which introduce their own compilers, standard libraries, runtime dependencies, or complex type systems—Magma has **zero runtime overhead and zero external dependencies**:
 - Every line of Magma maps deterministically **1-to-1** to standard Java (and back).
@@ -14,7 +14,7 @@ Unlike Kotlin, Groovy, or Scala—which introduce their own compilers, standard 
 
 ## 1. How Magma Compares to Java, Kotlin, Groovy, and Scala
 
-| Feature | Java | Kotlin | Groovy | Scala 3 | **Magma (`.mg`)** |
+| Feature | Java | Kotlin | Groovy | Scala 3 | **Magma (`.magma`)** |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Block delimiters** | `{ ... }` | `{ ... }` | `{ ... }` | Indentation | **Indentation (`:`)** |
 | **Statement terminators** | `;` required | Optional | Optional | Optional | **Newline (no `;`)** |
@@ -73,7 +73,7 @@ public class Shapes {
 }
 ```
 
-### Magma (`.mg`)
+### Magma (`.magma`)
 ```python
 # Geometry & Shapes in Magma (4-space indentation)
 
@@ -303,16 +303,16 @@ make bench    # Runs the transpilation throughput & code size benchmark
 ### CLI Commands
 
 ```sh
-# 1. Transpile Magma (.mg) to standard Java (.java) on stdout
-./magma examples/shapes.mg
+# 1. Transpile Magma (.magma) to standard Java (.java) on stdout
+./magma examples/shapes.magma
 
 # 2. Transpile, compile via javac, and run immediately
-./magma --run examples/shapes.mg
-./magma --run examples/comprehensions.mg
-./magma --run examples/lmon.mg
+./magma --run examples/shapes.magma
+./magma --run examples/comprehensions.magma
+./magma --run examples/lmon.magma
 
-# 3. Compile Magma (.mg) into a standalone executable binary
-./magma --compile examples/shapes.mg -o shapes
+# 3. Compile Magma (.magma) into a standalone executable binary
+./magma --compile examples/shapes.magma -o shapes
 ./shapes
 
 # 4. Convert existing Java (.java) source to Magma (4 spaces, 2 spaces, or tabs)
@@ -321,7 +321,7 @@ make bench    # Runs the transpilation throughput & code size benchmark
 ./magma --from-java --indent tab SomeClass.java
 
 # 5. Canonicalize / re-indent a Magma file
-./magma --magma --indent 4 examples/tabs.mg
+./magma --magma --indent 4 examples/tabs.magma
 ```
 
 ---

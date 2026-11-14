@@ -1,4 +1,4 @@
-# lmon.mg - JVM & System Resource Monitor in Magma
+# lmon.magma - JVM & System Resource Monitor in Magma
 
 import java.util.ArrayList
 import java.util.TreeMap
