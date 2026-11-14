@@ -1,0 +1,13 @@
+# Hello World in Magma (4-space indentation)
+
+public class Hello:
+    static def factorial(n: i32) -> i64:
+        result: i64 = 1
+        for i in range(2, n + 1):
+            result *= i64(i)
+        return result
+
+    public static def main(args: str[]):
+        println("Hello from Magma (Pythonic Java)!")
+        for n in range(1, 7):
+            printf("  %d! = %d\n", n, factorial(n))

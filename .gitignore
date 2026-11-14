@@ -1,0 +1,18 @@
+# Built binaries
+/magma
+/shapes
+/hello
+/tabs
+/comprehensions
+/lmon
+
+# C/Java build artifacts
+*.o
+*.out
+*.exe
+*.class
+*.jar
+*.dSYM/
+
+# OS / Editor files
+.DS_Store

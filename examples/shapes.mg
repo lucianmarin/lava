@@ -1,0 +1,32 @@
+# Geometry & Shapes in Magma (4-space indentation)
+
+public class Shapes:
+    PI = 3.141592653589793
+
+    static class Circle:
+        radius: f64
+        label: str
+
+        def Circle(r: f64, name: str):
+            self.radius = r
+            self.label = name
+
+    static def circle_area(c: Circle) -> f64:
+        if c == nil or c.radius <= 0.0:
+            return 0.0
+        return PI * c.radius * c.radius
+
+    public static def main(args: str[]):
+        radii: f64[3] = {1.0, 2.5, 5.0}
+        names: str[3] = {"unit", "medium", "large"}
+
+        for i in range(3):
+            c: Circle = new Circle(radii[i], names[i])
+            raw: any = c
+            area: f64 = circle_area(cast(Circle, raw))
+            if area > 10.0 and not (i == 0):
+                printf("[%s] r=%.1f -> area=%.2f (large)\n", c.label, c.radius, area)
+            elif area > 0.0:
+                printf("[%s] r=%.1f -> area=%.2f (small)\n", c.label, c.radius, area)
+            else:
+                printf("invalid circle\n")

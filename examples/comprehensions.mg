@@ -1,0 +1,21 @@
+# List, Set, and Dict Comprehensions in Magma (Java Arrays & Collections)
+
+import java.util.ArrayList
+import java.util.TreeSet
+import java.util.TreeMap
+
+public class Comprehensions:
+    public static def main(args: str[]):
+        # 1. Java fixed-size array comprehensions (zero boxing, stack/contiguous array)
+        squares: i32[8] = [i * i for i in range(8)]
+        evens: bool[16] = {i * 2 for i in range(8) if i % 2 == 0}
+        tens: i32[8] = {i: i * 10 for i in range(8) if i > 0}
+
+        printf("Java array squares[5] = %d, evens[8] = %d, tens[3] = %d\n", squares[5], evens[8] ? 1 : 0, tens[3])
+
+        # 2. Java Collections comprehensions (ArrayList, TreeSet, TreeMap)
+        doubled: list[i32] = [x * 2 for x in squares if x > 4]
+        uniq: set[i32] = {x % 10 for x in doubled}
+        lookup: dict[i32, i32] = {k: k * 100 for k in uniq if k > 0}
+
+        printf("Java collections doubled.size() = %d, uniq.size() = %d, lookup[8] = %d\n", doubled.size(), uniq.size(), lookup.get(8))

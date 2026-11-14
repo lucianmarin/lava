@@ -1,0 +1,27 @@
+# Tab-indented Magma example (\t indentation)
+
+public class Tabs:
+	enum Mode:
+		FAST
+		SAFE
+
+	static def compute(values: i32[], count: i32, mode: Mode) -> i32:
+		if values == nil or count <= 0:
+			return -1
+		sum: i32 = 0
+		for i in range(count):
+			switch mode:
+				case FAST:
+					sum += values[i]
+					break
+				case SAFE:
+					if values[i] > 0 and not (values[i] > 1000):
+						sum += values[i]
+					break
+				default:
+					break
+		return sum
+
+	public static def main(args: str[]):
+		nums: i32[4] = {10, 20, -5, 30}
+		printf("FAST=%d SAFE=%d\n", compute(nums, 4, Mode.FAST), compute(nums, 4, Mode.SAFE))

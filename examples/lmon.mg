@@ -1,0 +1,99 @@
+# lmon.mg - JVM & System Resource Monitor in Magma
+
+import java.util.ArrayList
+import java.util.TreeMap
+import java.lang.management.ManagementFactory
+import java.lang.management.MemoryMXBean
+import java.lang.management.OperatingSystemMXBean
+import java.lang.management.RuntimeMXBean
+import java.lang.management.ThreadMXBean
+
+public class Lmon:
+    MIB_DIV = 1048576.0
+
+    enum AlertLevel:
+        OK
+        WARN
+        CRIT
+
+    static class MetricSample:
+        name: str
+        used_mib: f64
+        max_mib: f64
+        usage_pct: f64
+        level: AlertLevel
+
+        def MetricSample(name: str, used: f64, max: f64):
+            self.name = name
+            self.used_mib = used
+            self.max_mib = max
+            if max > 0.0:
+                self.usage_pct = (used / max) * 100.0
+            else:
+                self.usage_pct = 0.0
+            if self.usage_pct >= 85.0:
+                self.level = AlertLevel.CRIT
+            elif self.usage_pct >= 65.0:
+                self.level = AlertLevel.WARN
+            else:
+                self.level = AlertLevel.OK
+
+    static def level_badge(lvl: AlertLevel) -> str:
+        switch lvl:
+            case OK:
+                return "OK  "
+            case WARN:
+                return "WARN"
+            case CRIT:
+                return "CRIT"
+            default:
+                return "UNK "
+
+    static def render_bar(pct: f64, width: i32) -> str:
+        filled: i32 = i32((pct / 100.0) * f64(width))
+        if filled < 0:
+            filled = 0
+        elif filled > width:
+            filled = width
+        sb: StringBuilder = new StringBuilder("[")
+        for i in range(width):
+            if i < filled:
+                sb.append('#')
+            else:
+                sb.append('.')
+        sb.append(']')
+        return sb.toString()
+
+    public static def main(args: str[]):
+        osBean: OperatingSystemMXBean = ManagementFactory.getOperatingSystemMXBean()
+        memBean: MemoryMXBean = ManagementFactory.getMemoryMXBean()
+        rtBean: RuntimeMXBean = ManagementFactory.getRuntimeMXBean()
+        thBean: ThreadMXBean = ManagementFactory.getThreadMXBean()
+        rt: Runtime = Runtime.getRuntime()
+
+        cpus: i32 = osBean.getAvailableProcessors()
+        load: f64 = osBean.getSystemLoadAverage()
+        uptime_sec: f64 = f64(rtBean.getUptime()) / 1000.0
+
+        heap_used: f64 = f64(memBean.getHeapMemoryUsage().getUsed()) / MIB_DIV
+        heap_committed: f64 = f64(memBean.getHeapMemoryUsage().getCommitted()) / MIB_DIV
+        heap_max: f64 = f64(rt.maxMemory()) / MIB_DIV
+        nonheap_used: f64 = f64(memBean.getNonHeapMemoryUsage().getUsed()) / MIB_DIV
+
+        samples: list[MetricSample] = new list[MetricSample]()
+        samples.add(new MetricSample("Heap Used vs Max", heap_used, heap_max))
+        samples.add(new MetricSample("Heap Used vs Committed", heap_used, heap_committed))
+        samples.add(new MetricSample("Non-Heap Metadata", nonheap_used, 256.0))
+
+        pcts: list[f64] = [s.usage_pct for s in samples]
+        by_name: dict[str, f64] = {s.name: s.used_mib for s in samples}
+
+        printf("=== LMON: Magma JVM & System Monitor ===\n")
+        printf("OS: %s (%s) | CPUs: %d | Load Avg: %.2f | JVM Uptime: %.2fs\n", osBean.getName(), osBean.getArch(), cpus, load, uptime_sec)
+        printf("Live Threads: %d (Peak: %d, Daemon: %d)\n\n", thBean.getThreadCount(), thBean.getPeakThreadCount(), thBean.getDaemonThreadCount())
+
+        for s in samples:
+            bar: str = render_bar(s.usage_pct, 20)
+            printf("  [%s] %-24s %s %6.2f / %6.2f MiB (%5.1f%%)\n", level_badge(s.level), s.name, bar, s.used_mib, s.max_mib, s.usage_pct)
+
+        printf("\nTracked metrics: %d | Indexed in TreeMap: %d\n", pcts.size(), by_name.size())
